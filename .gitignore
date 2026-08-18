@@ -1,0 +1,5 @@
+# Las bases .xlsx NO van al repo (son publicas y traen datos de clientes)
+*.xlsx
+~$*
+__pycache__/
+*.pyc

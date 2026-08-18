@@ -1,0 +1,188 @@
+{
+  "_ayuda": "Este archivo controla la auditoria. Editalo y corre actualizar.cmd. NO edites datos.json a mano.",
+  "carpeta_bases": "../Bd_s PXM y SC",
+  "proyectos": [
+    {
+      "nombre": "ALTAMAR",
+      "archivo": "ALTAMAR BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ALTAMAR III"
+      ]
+    },
+    {
+      "nombre": "ALURA",
+      "archivo": "ALURA BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "AMP FORTALEZA",
+      "archivo": "AMP FORTALEZA BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "AMP PUESTA DEL SOL",
+      "archivo": "AMP PUESTA DEL SOL BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "ZOI",
+      "archivo": "BASE  DE MENSUALIDADES ZOI MARZO.xlsx",
+      "hojas": [
+        "MENSUALIDADES"
+      ]
+    },
+    {
+      "nombre": "GUAYACÁN",
+      "archivo": "BASE DE MENSUALIDADES GUAYACÁN MARZO.xlsx",
+      "hojas": [
+        "MENSUALIDADES"
+      ]
+    },
+    {
+      "nombre": "NEXUS",
+      "archivo": "BASE DE MENSUALIDADES NEXUS MARZO.xlsx",
+      "hojas": [
+        "MENSUALIDADES"
+      ]
+    },
+    {
+      "nombre": "INTEROCEANICO",
+      "archivo": "BASE INTEROCEANICO MARZO.xlsx",
+      "hojas": [
+        "MENSUALIDADES"
+      ]
+    },
+    {
+      "nombre": "BINNIZÁ",
+      "archivo": "BINNIZÁ BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITO"
+      ]
+    },
+    {
+      "nombre": "GUIDXILAYÚ",
+      "archivo": "GUIDXILAYU BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS",
+        "ACTIVOS Y FINIQUITOS PG"
+      ]
+    },
+    {
+      "nombre": "KAILANI",
+      "archivo": "KAILANI BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "LUNA",
+      "archivo": "LUNA BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "MAJAHUA",
+      "archivo": "MAJAHUA BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "OLAIA",
+      "archivo": "OLAIA BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "OLAIA"
+      ]
+    },
+    {
+      "nombre": "PUESTA DEL SOL",
+      "archivo": "PUESTA DEL SOL BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    },
+    {
+      "nombre": "QUERENA CAMPESTRE",
+      "archivo": "QUERENA CAMPESTRE BASE DE DATOS.xlsx",
+      "hojas": [
+        "MENSUALIDADES"
+      ]
+    },
+    {
+      "nombre": "SAMARA",
+      "archivo": "SAMARA BASE DE DATOS JUNIO.xlsx",
+      "hojas": [
+        "Sheet1"
+      ]
+    },
+    {
+      "nombre": "SAMARITAN",
+      "archivo": "SAMARITAN BASE DE DATOS MARZO.xlsx",
+      "hojas": [
+        "ACTIVOS Y FINIQUITOS"
+      ]
+    }
+  ],
+  "columnas": {
+    "mza": [
+      "MZA",
+      "MZA.",
+      "MANZANA",
+      "MZ"
+    ],
+    "lote": [
+      "LOTE"
+    ],
+    "cliente": [
+      "CLIENTE",
+      "NOMBRE DEL CLIENTE"
+    ],
+    "monto": [
+      "MONTO",
+      "MONTO DE COMPRA",
+      "MONTO DE VENTA",
+      "PRECIO DEL LOTE",
+      "PRECIO"
+    ],
+    "enganche": [
+      "ENGANCHE"
+    ],
+    "abonado": [
+      "TOTAL ABONADO",
+      "SALDO ABONADO",
+      "ABONADO"
+    ],
+    "corte_pagos": [
+      "MONTO A FINIQUITAR",
+      "MONTO A FINANCIAR"
+    ],
+    "excluir_de_pagos": [
+      "TOTAL ABONADO",
+      "SALDO A PAGAR",
+      "SALDO APAGAR",
+      "SALDO ABONADO",
+      "POR LIQUIDAR",
+      "OBSERVACIONES",
+      "SALDO"
+    ]
+  },
+  "cliente_vacio": [
+    "",
+    ".",
+    "0",
+    "NA",
+    "N/A",
+    "-",
+    "DISPONIBLE"
+  ],
+  "cliente_vacio_prefijo": [
+    "DISPONIBLE"
+  ]
+}
