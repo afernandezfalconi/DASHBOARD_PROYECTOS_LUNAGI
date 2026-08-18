@@ -103,6 +103,17 @@ def es_marcador_cancelados(fila):
     return False
 
 
+def clasificar_cliente(cliente, clasif):
+    """Agrupa un 'vendido sin ingreso' segun quien aparece como cliente."""
+    n = norm(cliente)
+    for cat in clasif.get("categorias", []):
+        if n in {norm(x) for x in cat.get("exactos", [])}:
+            return cat["nombre"]
+        if any(norm(x) in n for x in cat.get("contiene", [])):
+            return cat["nombre"]
+    return clasif.get("categoria_por_defecto", "Cliente sin dato capturado")
+
+
 # ---------------------------------------------------------------- auditoria
 def auditar_hoja(ws, reglas, diag):
     filas = [list(f) for f in ws.iter_rows(values_only=True)]
@@ -131,6 +142,7 @@ def auditar_hoja(ws, reglas, diag):
            mapa.get("enganche"), mapa.get("abonado"), corte, len(pagos))
     )
 
+    clasif = reglas.get("clasificacion", {})
     vacios = {norm(x) for x in reglas["cliente_vacio"]}
     prefijos = [norm(x) for x in reglas["cliente_vacio_prefijo"]]
 
@@ -165,21 +177,38 @@ def auditar_hoja(ws, reglas, diag):
 
         ingreso = abonado if abonado else (enganche + mensual)
 
+        # --- estatus del contrato (cancelado / apartado) ---
+        ec = norm(val("estatus"))
+        ec = norm(clasif.get("correcciones_estatus", {}).get(ec, ec))
+        nota, categoria = "", None
+
+        if cliente and ec in {norm(x) for x in clasif.get("estatus_cancelado", [])}:
+            nota = "Cancelado: " + cliente     # el lote vuelve a inventario
+            cliente = ""
+
         if not cliente:
             estatus = "disponible"
             ingreso = 0.0
+        elif ec in {norm(x) for x in clasif.get("estatus_apartado", [])}:
+            estatus = "apartado"
         elif monto or enganche or mensual or abonado:
             estatus = "vendido"
         else:
             estatus = "vendido_sin_dato"
             ingreso = 0.0
+            categoria = clasificar_cliente(cliente, clasif)
 
-        lotes[(mza, lote)] = {
+        reg = {
             "mza": mza, "lote": lote, "cliente": cliente, "estatus": estatus,
             "monto": r2(monto) if monto else None,
             "enganche": r2(enganche) if enganche else None,
             "ingreso": r2(ingreso),
         }
+        if categoria:
+            reg["categoria"] = categoria
+        if nota:
+            reg["nota"] = nota
+        lotes[(mza, lote)] = reg
 
     return list(lotes.values())
 
@@ -229,14 +258,15 @@ def main():
 
         for l in lotes:
             if l["estatus"] == "vendido_sin_dato":
-                alertas.append({"proyecto": p["nombre"], "mza": l["mza"],
-                                "lote": l["lote"], "cliente": l["cliente"]})
+                alertas.append({"proyecto": p["nombre"], "mza": l["mza"], "lote": l["lote"],
+                                "cliente": l["cliente"], "categoria": l.get("categoria", "")})
 
         proyectos.append({
             "nombre": p["nombre"],
             "total": len(lotes),
             "disponibles": sum(1 for l in lotes if l["estatus"] == "disponible"),
-            "vendidos": sum(1 for l in lotes if l["estatus"] != "disponible"),
+            "apartados": sum(1 for l in lotes if l["estatus"] == "apartado"),
+            "vendidos": sum(1 for l in lotes if l["estatus"] in ("vendido", "vendido_sin_dato")),
             "vendidos_con_ingreso": sum(1 for l in lotes if l["estatus"] == "vendido"),
             "vendidos_sin_ingreso": sum(1 for l in lotes if l["estatus"] == "vendido_sin_dato"),
             "ingresos": r2(sum(l["ingreso"] for l in lotes)),
@@ -249,6 +279,7 @@ def main():
         "grand": {
             "total": sum(p["total"] for p in proyectos),
             "available": sum(p["disponibles"] for p in proyectos),
+            "reserved": sum(p["apartados"] for p in proyectos),
             "sold": sum(p["vendidos"] for p in proyectos),
             "sold_with_data": sum(p["vendidos_con_ingreso"] for p in proyectos),
             "sold_no_data": sum(p["vendidos_sin_ingreso"] for p in proyectos),

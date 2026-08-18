@@ -171,6 +171,9 @@
       "POR LIQUIDAR",
       "OBSERVACIONES",
       "SALDO"
+    ],
+    "estatus": [
+      "ESTATUS DEL CONTRATO"
     ]
   },
   "cliente_vacio": [
@@ -184,5 +187,64 @@
   ],
   "cliente_vacio_prefijo": [
     "DISPONIBLE"
-  ]
+  ],
+  "clasificacion": {
+    "_ayuda": "Como se decide si un lote esta disponible, apartado o vendido, y como se agrupan los vendidos sin ingreso.",
+    "correcciones_estatus": {
+      "FRIMADO": "FIRMADO",
+      "SIN FIRMAS": "SIN FIRMA",
+      "PENDIENTE DE FIRMA": "PENDIENTE FIRMA"
+    },
+    "estatus_cancelado": [
+      "CANCELADO"
+    ],
+    "estatus_apartado": [
+      "PENDIENTE FIRMA",
+      "SIN FIRMA"
+    ],
+    "categorias": [
+      {
+        "nombre": "Inmobiliaria socia",
+        "contiene": [
+          "INM ARCADIA",
+          "GRUPO POLARIS",
+          "GRUPO PACIFICO",
+          "ARCADIA"
+        ],
+        "exactos": []
+      },
+      {
+        "nombre": "Administracion Cristhian",
+        "contiene": [
+          "CRISTHIAN ENRIQUE"
+        ],
+        "exactos": []
+      },
+      {
+        "nombre": "Uso interno / comunal",
+        "contiene": [
+          "DONACION",
+          "PERMISOS MUNICIPALES",
+          "BIENES COMUNALES",
+          "COMISARIADO",
+          "REPRESENTACION",
+          "POZO DE AGUA"
+        ],
+        "exactos": []
+      },
+      {
+        "nombre": "Anotacion sin cliente",
+        "contiene": [
+          "SEGUIMIENTO EQUIPO"
+        ],
+        "exactos": [
+          "HECTOR",
+          "MILAGROS",
+          "PG",
+          "."
+        ]
+      }
+    ],
+    "categoria_por_defecto": "Cliente sin dato capturado"
+  }
 }
