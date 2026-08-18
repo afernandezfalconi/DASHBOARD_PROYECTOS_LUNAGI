@@ -1,0 +1,343 @@
+/**
+ * AUDITORIA DE LOTES - LUNA GI
+ * Publica el dashboard vivo directamente desde Google Sheets.
+ *
+ * Lee la hoja LOTES, arma el mismo datos.json que produce auditar.py,
+ * lo inyecta en la plantilla y sube ambos archivos a GitHub. GitHub Pages
+ * publica solo. No hace falta Python ni esta computadora.
+ *
+ * INSTALACION (una sola vez):
+ *   1. En el Sheet:  Extensiones > Apps Script
+ *   2. Borra lo que haya y pega TODO este archivo. Guarda.
+ *   3. Recarga el Sheet. Aparece el menu "Dashboard".
+ *   4. Dashboard > Configurar token de GitHub  (pegas tu token)
+ *   5. Dashboard > Publicar ahora
+ */
+
+const REPO = 'afernandezfalconi/DASHBOARD_PROYECTOS_LUNAGI';
+const RAMA = 'main';
+const HOJA = 'LOTES';
+const URL_DASHBOARD = 'https://afernandezfalconi.github.io/DASHBOARD_PROYECTOS_LUNAGI/';
+
+const ESTATUS = {
+  'DISPONIBLE': 'disponible',
+  'APARTADO': 'apartado',
+  'VENDIDO': 'vendido',
+  'VENDIDO SIN DATO': 'vendido_sin_dato'
+};
+
+// --------------------------------------------------------------- menu
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Dashboard')
+    .addItem('Publicar ahora', 'publicar')
+    .addItem('Revisar sin publicar', 'revisar')
+    .addSeparator()
+    .addItem('Abrir el dashboard', 'abrirDashboard')
+    .addItem('Configurar token de GitHub', 'configurarToken')
+    .addToUi();
+}
+
+function configurarToken() {
+  const ui = SpreadsheetApp.getUi();
+  const r = ui.prompt(
+    'Token de GitHub',
+    'Pega un token con permiso de escritura SOLO sobre el repositorio\n' +
+    REPO + '\n\n' +
+    'Se guarda en las propiedades de este script, no en la hoja.',
+    ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const t = r.getResponseText().trim();
+  if (!t) { ui.alert('No guardé nada: el token venía vacío.'); return; }
+  PropertiesService.getScriptProperties().setProperty('GITHUB_TOKEN', t);
+  ui.alert('Token guardado. Ya puedes usar "Publicar ahora".');
+}
+
+function abrirDashboard() {
+  SpreadsheetApp.getUi().showModalDialog(
+    HtmlService.createHtmlOutput(
+      '<p style="font:14px system-ui">El dashboard vivo:</p>' +
+      '<p><a href="' + URL_DASHBOARD + '" target="_blank" style="font:14px system-ui">' +
+      URL_DASHBOARD + '</a></p>').setWidth(420).setHeight(120),
+    'Dashboard vivo');
+}
+
+// ----------------------------------------------------------- utilidades
+function norm(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+function texto(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) return '';
+  return String(v).replace(/\s+/g, ' ').trim();
+}
+
+function num(v) {
+  if (typeof v === 'number' && isFinite(v)) return v;
+  if (v === null || v === undefined || v instanceof Date) return 0;
+  const n = parseFloat(String(v).replace(/[$,\s]/g, ''));
+  return isFinite(n) ? n : 0;
+}
+
+function r2(x) { return Math.round((x + Number.EPSILON) * 100) / 100; }
+
+// clave que ordena "10" despues de "9" y no alfabeticamente
+function claveNum(x) {
+  const s = String(x).trim();
+  return /^\d+$/.test(s) ? [0, parseInt(s, 10), ''] : [1, 0, s];
+}
+function cmpClave(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] < b[i]) return -1;
+    if (a[i] > b[i]) return 1;
+  }
+  return 0;
+}
+
+// ------------------------------------------------------- armar los datos
+function construirDatos() {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+  if (!hoja) throw new Error('No encuentro la hoja "' + HOJA + '"');
+
+  const filas = hoja.getDataRange().getValues();
+  if (!filas.length) throw new Error('La hoja ' + HOJA + ' está vacía');
+
+  let iCab = -1;
+  for (let i = 0; i < Math.min(filas.length, 10); i++) {
+    if (norm(filas[i][0]) === 'PROYECTO') { iCab = i; break; }
+  }
+  if (iCab < 0) throw new Error('No encuentro el encabezado (fila con PROYECTO)');
+
+  const cab = filas[iCab].map(norm);
+  const need = ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'ESTATUS',
+                'MONTO', 'ENGANCHE', 'INGRESO', 'CATEGORIA', 'NOTA'];
+  const col = {};
+  need.forEach(function (c) {
+    const j = cab.indexOf(c);
+    if (j < 0) throw new Error('Falta la columna ' + c + ' en la hoja ' + HOJA);
+    col[c] = j;
+  });
+
+  const porProyecto = {}, orden = [], problemas = [];
+
+  for (let i = iCab + 1; i < filas.length; i++) {
+    const f = filas[i];
+    const proyecto = texto(f[col.PROYECTO]);
+    const lote = texto(f[col.LOTE]);
+    if (!proyecto && !lote) continue;
+    if (!proyecto || !lote) {
+      problemas.push('Fila ' + (i + 1) + ': falta PROYECTO o LOTE');
+      continue;
+    }
+
+    const est = ESTATUS[norm(f[col.ESTATUS])];
+    if (!est) {
+      problemas.push('Fila ' + (i + 1) + ': estatus no válido "' + texto(f[col.ESTATUS]) + '"');
+      continue;
+    }
+
+    const monto = num(f[col.MONTO]);
+    const enganche = num(f[col.ENGANCHE]);
+    const reg = {
+      mza: texto(f[col.MANZANA]),
+      lote: lote,
+      cliente: texto(f[col.CLIENTE]),
+      estatus: est,
+      monto: monto ? r2(monto) : null,
+      enganche: enganche ? r2(enganche) : null,
+      ingreso: r2(num(f[col.INGRESO]))
+    };
+    if (est === 'vendido_sin_dato') {
+      reg.categoria = texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado';
+    }
+    if (texto(f[col.NOTA])) reg.nota = texto(f[col.NOTA]);
+
+    if (!porProyecto[proyecto]) { porProyecto[proyecto] = []; orden.push(proyecto); }
+    porProyecto[proyecto].push(reg);
+  }
+
+  const proyectos = [], alertas = [];
+  orden.forEach(function (nombre) {
+    const lotes = porProyecto[nombre];
+    lotes.forEach(function (l) {
+      if (l.estatus === 'vendido_sin_dato') {
+        alertas.push({ proyecto: nombre, mza: l.mza, lote: l.lote,
+                       cliente: l.cliente, categoria: l.categoria || '' });
+      }
+    });
+    const cuenta = function (e) { return lotes.filter(function (l) { return l.estatus === e; }).length; };
+    proyectos.push({
+      nombre: nombre,
+      total: lotes.length,
+      disponibles: cuenta('disponible'),
+      apartados: cuenta('apartado'),
+      vendidos: cuenta('vendido') + cuenta('vendido_sin_dato'),
+      vendidos_con_ingreso: cuenta('vendido'),
+      vendidos_sin_ingreso: cuenta('vendido_sin_dato'),
+      ingresos: r2(lotes.reduce(function (s, l) { return s + l.ingreso; }, 0)),
+      lotes: lotes
+    });
+  });
+
+  proyectos.sort(function (a, b) { return b.total - a.total; });
+  alertas.sort(function (a, b) {
+    if (a.proyecto !== b.proyecto) return a.proyecto < b.proyecto ? -1 : 1;
+    const m = cmpClave(claveNum(a.mza), claveNum(b.mza));
+    return m !== 0 ? m : cmpClave(claveNum(a.lote), claveNum(b.lote));
+  });
+
+  const suma = function (k) {
+    return proyectos.reduce(function (s, p) { return s + p[k]; }, 0);
+  };
+
+  return {
+    datos: {
+      generated: Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd'),
+      grand: {
+        total: suma('total'),
+        available: suma('disponibles'),
+        reserved: suma('apartados'),
+        sold: suma('vendidos'),
+        sold_with_data: suma('vendidos_con_ingreso'),
+        sold_no_data: suma('vendidos_sin_ingreso'),
+        income: r2(suma('ingresos'))
+      },
+      projects: proyectos,
+      alerts: alertas
+    },
+    problemas: problemas
+  };
+}
+
+// ------------------------------------------------------------- revisar
+function revisar() {
+  const ui = SpreadsheetApp.getUi();
+  let r;
+  try { r = construirDatos(); }
+  catch (e) { ui.alert('No pude leer la hoja', String(e.message), ui.ButtonSet.OK); return; }
+
+  const g = r.datos.grand;
+  let msg = 'Así quedaría el dashboard:\n\n' +
+    '  Lotes totales   ' + g.total + '\n' +
+    '  Disponibles     ' + g.available + '\n' +
+    '  Apartados       ' + g.reserved + '\n' +
+    '  Vendidos        ' + g.sold + '\n' +
+    '  Sin ingreso     ' + g.sold_no_data + '\n' +
+    '  Ingresos        $' + g.income.toLocaleString('es-MX') + '\n\n' +
+    '  Proyectos       ' + r.datos.projects.length;
+
+  if (r.problemas.length) {
+    msg += '\n\nFILAS CON PROBLEMA (' + r.problemas.length + '), no se incluyen:\n' +
+           r.problemas.slice(0, 12).join('\n');
+    if (r.problemas.length > 12) msg += '\n  ...y ' + (r.problemas.length - 12) + ' más';
+  }
+  ui.alert('Revisión', msg, ui.ButtonSet.OK);
+}
+
+// ------------------------------------------------------------ publicar
+function publicar() {
+  const ui = SpreadsheetApp.getUi();
+  const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
+  if (!token) {
+    ui.alert('Falta el token', 'Usa primero: Dashboard > Configurar token de GitHub',
+             ui.ButtonSet.OK);
+    return;
+  }
+
+  let r;
+  try { r = construirDatos(); }
+  catch (e) { ui.alert('No pude leer la hoja', String(e.message), ui.ButtonSet.OK); return; }
+
+  if (r.problemas.length) {
+    const seguir = ui.alert(
+      'Hay ' + r.problemas.length + ' fila(s) con problema',
+      r.problemas.slice(0, 10).join('\n') +
+      '\n\nEsas filas NO se van a incluir. ¿Publico de todos modos?',
+      ui.ButtonSet.YES_NO);
+    if (seguir !== ui.Button.YES) return;
+  }
+
+  const g = r.datos.grand;
+  const ok = ui.alert('Confirmar publicación',
+    'Se va a publicar en el dashboard vivo:\n\n' +
+    '  ' + g.total + ' lotes · ' + g.available + ' disponibles · ' +
+    g.reserved + ' apartados · ' + g.sold + ' vendidos\n' +
+    '  Ingresos: $' + g.income.toLocaleString('es-MX') + '\n\n¿Continuar?',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  try {
+    const json = JSON.stringify(r.datos);
+    const plantilla = traerDeGitHub('scripts/plantilla.html', token);
+    const ini = '/*__DATOS_AQUI__*/', fin = '/*__FIN__*/';
+    const a = plantilla.indexOf(ini), b = plantilla.indexOf(fin);
+    if (a < 0 || b < 0) throw new Error('La plantilla no trae los marcadores de datos');
+    const html = plantilla.slice(0, a + ini.length) +
+                 json.replace(/<\//g, '<\\/') +
+                 plantilla.slice(b);
+
+    const sello = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
+    subirAGitHub('datos.json', json, 'Actualiza datos desde Sheets (' + sello + ')', token);
+    subirAGitHub('index.html', html, 'Actualiza dashboard desde Sheets (' + sello + ')', token);
+
+    ui.alert('Publicado',
+      'Listo. El dashboard se actualiza en aproximadamente un minuto:\n\n' +
+      URL_DASHBOARD + '\n\nSi no ves el cambio, recarga con Ctrl+F5.',
+      ui.ButtonSet.OK);
+  } catch (e) {
+    ui.alert('No se pudo publicar', String(e.message), ui.ButtonSet.OK);
+  }
+}
+
+// --------------------------------------------------------- GitHub API
+function encabezados(token) {
+  return {
+    Authorization: 'Bearer ' + token,
+    Accept: 'application/vnd.github+json',
+    'X-GitHub-Api-Version': '2022-11-28'
+  };
+}
+
+function traerDeGitHub(ruta, token) {
+  const url = 'https://api.github.com/repos/' + REPO + '/contents/' +
+              encodeURI(ruta) + '?ref=' + RAMA;
+  const res = UrlFetchApp.fetch(url, { headers: encabezados(token), muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) {
+    throw new Error('No pude leer ' + ruta + ' de GitHub (código ' +
+                    res.getResponseCode() + '). ¿El token tiene acceso al repositorio?');
+  }
+  const j = JSON.parse(res.getContentText());
+  return Utilities.newBlob(Utilities.base64Decode(j.content.replace(/\n/g, ''))).getDataAsString('UTF-8');
+}
+
+function subirAGitHub(ruta, contenido, mensaje, token) {
+  const url = 'https://api.github.com/repos/' + REPO + '/contents/' + encodeURI(ruta);
+
+  let sha = null;
+  const previo = UrlFetchApp.fetch(url + '?ref=' + RAMA,
+    { headers: encabezados(token), muteHttpExceptions: true });
+  if (previo.getResponseCode() === 200) sha = JSON.parse(previo.getContentText()).sha;
+
+  const cuerpo = {
+    message: mensaje,
+    content: Utilities.base64Encode(contenido, Utilities.Charset.UTF_8),
+    branch: RAMA
+  };
+  if (sha) cuerpo.sha = sha;
+
+  const res = UrlFetchApp.fetch(url, {
+    method: 'put',
+    headers: encabezados(token),
+    contentType: 'application/json',
+    payload: JSON.stringify(cuerpo),
+    muteHttpExceptions: true
+  });
+  const codigo = res.getResponseCode();
+  if (codigo !== 200 && codigo !== 201) {
+    throw new Error('GitHub rechazó ' + ruta + ' (código ' + codigo + '): ' +
+                    res.getContentText().slice(0, 300));
+  }
+}
