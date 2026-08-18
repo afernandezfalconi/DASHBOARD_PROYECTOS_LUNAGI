@@ -20,6 +20,14 @@ if errorlevel 1 (
 )
 
 echo.
+echo ------------------------------------------------------------
+echo   Nombres parecidos (posibles erratas de captura):
+echo ------------------------------------------------------------
+python scripts\marcar_duplicados.py
+echo   Para pintarlos de amarillo en las bases:
+echo      python scripts\marcar_duplicados.py --marcar
+
+echo.
 git add -A
 git diff --cached --quiet
 if not errorlevel 1 (
