@@ -1,5 +1,7 @@
 {
-  "_ayuda": "Este archivo controla la auditoria. Editalo y corre actualizar.cmd. NO edites datos.json a mano.",
+  "_ayuda": "Este archivo controla la auditoria. 'fuente' decide de donde se leen los datos: 'maestro' = AUDITORIA_LOTES.xlsx (recomendado, un solo archivo); 'bases' = los 18 .xlsx originales. NO edites datos.json a mano.",
+  "fuente": "maestro",
+  "archivo_maestro": "AUDITORIA_LOTES.xlsx",
   "carpeta_bases": "../Bd_s PXM y SC",
   "proyectos": [
     {

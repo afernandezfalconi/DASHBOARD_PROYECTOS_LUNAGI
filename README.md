@@ -9,17 +9,20 @@ disponibles y cuánto se ha cobrado en cada uno.
 
 ## Cómo actualizar el dashboard
 
-1. Actualiza los archivos `.xlsx` en la carpeta de bases (o edita `scripts/reglas.json`).
-2. Doble clic en **`actualizar.cmd`**.
-3. Listo. En ~1 minuto el dashboard vivo ya muestra los cambios.
+1. Abre **`AUDITORIA_LOTES.xlsx`** y edita lo que necesites (hoja `LOTES`).
+2. Guarda y **cierra** Excel.
+3. Doble clic en **`actualizar.cmd`**.
+4. Listo. En ~1 minuto el dashboard vivo ya muestra los cambios.
 
-Eso es todo. El script lee las bases, recalcula, regenera el dashboard y lo publica.
+Un solo archivo con los 2,202 lotes de los 18 proyectos. Ya no hay que abrir
+las 18 bases por separado.
 
 ---
 
 ## Cómo está armado
 
 ```
+AUDITORIA_LOTES.xlsx  ← ⭐ LA FUENTE DE VERDAD. Aquí trabajas
 index.html            ← el dashboard. GENERADO: no lo edites a mano
 datos.json            ← los datos calculados. GENERADO: no lo edites a mano
 actualizar.cmd        ← doble clic: recalcula y publica
@@ -28,6 +31,7 @@ scripts/
   reglas.json         ← ⭐ AQUÍ se ajusta la auditoría
   plantilla.html      ← el diseño del dashboard (aquí sí se edita el diseño)
   marcar_duplicados.py← pinta de amarillo los nombres con posible errata
+  generar_maestro.py  ← crea AUDITORIA_LOTES.xlsx desde las 18 bases
 ```
 
 `index.html` se arma metiendo los datos dentro de `plantilla.html`. Por eso el
@@ -38,10 +42,10 @@ Pages y también con doble clic, sin internet.
 
 | Quiero cambiar…                        | Edito…                       |
 |----------------------------------------|------------------------------|
-| Qué archivo/hoja usa un proyecto       | `scripts/reglas.json`        |
-| El nombre con que sale un proyecto     | `scripts/reglas.json`        |
-| Cómo se detectan las columnas          | `scripts/reglas.json`        |
-| Qué cuenta como disponible / vendido   | `scripts/reglas.json`        |
+| Un cliente, estatus, monto o ingreso   | `AUDITORIA_LOTES.xlsx`       |
+| Agregar o quitar un lote               | `AUDITORIA_LOTES.xlsx`       |
+| El nombre con que sale un proyecto     | `AUDITORIA_LOTES.xlsx`       |
+| De dónde se lee (maestro / bases)      | `scripts/reglas.json`        |
 | Colores, textos, gráficas del tablero  | `scripts/plantilla.html`     |
 | La lógica del cálculo                  | `scripts/auditar.py`         |
 

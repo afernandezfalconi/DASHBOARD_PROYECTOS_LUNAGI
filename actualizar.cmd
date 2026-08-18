@@ -7,7 +7,7 @@ set PYTHONIOENCODING=utf-8
 echo.
 echo ============================================================
 echo   AUDITORIA DE LOTES - LUNA GI
-echo   Leyendo las bases y regenerando el dashboard...
+echo   Leyendo AUDITORIA_LOTES.xlsx y regenerando el dashboard...
 echo ============================================================
 echo.
 
@@ -18,14 +18,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-
-echo.
-echo ------------------------------------------------------------
-echo   Nombres parecidos (posibles erratas de captura):
-echo ------------------------------------------------------------
-python scripts\marcar_duplicados.py
-echo   Para pintarlos de amarillo en las bases:
-echo      python scripts\marcar_duplicados.py --marcar
 
 echo.
 git add -A

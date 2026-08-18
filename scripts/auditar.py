@@ -224,21 +224,25 @@ def buscar_archivo(carpeta, nombre):
     return None
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--salida", default=os.path.join(RAIZ, "datos.json"))
-    ap.add_argument("--silencio", action="store_true")
-    ap.add_argument("--solo-datos", dest="solo_datos", action="store_true",
-                    help="genera solo el json, sin regenerar index.html")
-    args = ap.parse_args()
+# ------------------------------------------------------- fuentes de datos
+ESTATUS_A_TEXTO = {
+    "disponible": "DISPONIBLE",
+    "apartado": "APARTADO",
+    "vendido": "VENDIDO",
+    "vendido_sin_dato": "VENDIDO SIN DATO",
+}
+TEXTO_A_ESTATUS = {norm(v): k for k, v in ESTATUS_A_TEXTO.items()}
+COLS_MAESTRO = ["PROYECTO", "MANZANA", "LOTE", "CLIENTE", "ESTATUS",
+                "MONTO", "ENGANCHE", "INGRESO", "CATEGORIA", "NOTA"]
 
-    reglas = json.load(open(os.path.join(AQUI, "reglas.json"), encoding="utf-8"))
+
+def desde_bases(reglas, diag):
+    """Lee los 18 .xlsx originales. Es el camino para sembrar el maestro."""
     carpeta = os.path.normpath(os.path.join(RAIZ, reglas["carpeta_bases"]))
     if not os.path.isdir(carpeta):
         sys.exit("No encuentro la carpeta de bases: %s" % carpeta)
 
-    proyectos, alertas, diag = [], [], []
-
+    proyectos = []
     for p in reglas["proyectos"]:
         ruta = buscar_archivo(carpeta, p["archivo"])
         diag.append("%s  <-  %s" % (p["nombre"], os.path.basename(ruta) if ruta else "?? NO ENCONTRADO"))
@@ -255,13 +259,90 @@ def main():
             diag.append("   hoja '%s'" % real)
             lotes += auditar_hoja(wb[real], reglas, diag)
         wb.close()
+        proyectos.append({"nombre": p["nombre"], "lotes": lotes})
+    return proyectos
 
+
+def desde_maestro(ruta, diag):
+    """Lee el archivo unico de trabajo (AUDITORIA_LOTES.xlsx)."""
+    if not os.path.exists(ruta):
+        sys.exit("No existe el maestro: %s\n"
+                 "Generalo con:  python scripts/generar_maestro.py" % ruta)
+
+    wb = openpyxl.load_workbook(ruta, read_only=True, data_only=True)
+    hoja = next((s for s in wb.sheetnames if norm(s) == "LOTES"), None)
+    if hoja is None:
+        wb.close()
+        sys.exit("El maestro no tiene la hoja LOTES")
+
+    filas = [list(f) for f in wb[hoja].iter_rows(values_only=True)]
+    wb.close()
+
+    ic = next((i for i, f in enumerate(filas) if norm(f[0] if f else "") == "PROYECTO"), None)
+    if ic is None:
+        sys.exit("No encuentro el encabezado (fila con PROYECTO) en la hoja LOTES")
+    cab = [norm(c) for c in filas[ic]]
+    idx = {c: cab.index(c) for c in COLS_MAESTRO if c in cab}
+    faltan = [c for c in COLS_MAESTRO if c not in idx]
+    if faltan:
+        sys.exit("Al maestro le faltan columnas: %s" % ", ".join(faltan))
+
+    porp, orden = {}, []
+    saltadas = 0
+    for f in filas[ic + 1:]:
+        def v(c):
+            j = idx[c]
+            return f[j] if j < len(f) else None
+
+        proyecto = texto(v("PROYECTO"))
+        lote = texto(v("LOTE"))
+        if not proyecto or not lote:
+            if any(x is not None and str(x).strip() for x in f):
+                saltadas += 1
+            continue
+
+        est = TEXTO_A_ESTATUS.get(norm(v("ESTATUS")))
+        if est is None:
+            diag.append("   !! estatus no reconocido '%s' en %s mza %s lote %s -> se omite la fila"
+                        % (texto(v("ESTATUS")), proyecto, texto(v("MANZANA")), lote))
+            saltadas += 1
+            continue
+
+        cliente = texto(v("CLIENTE"))
+        monto, enganche = num(v("MONTO")), num(v("ENGANCHE"))
+        reg = {
+            "mza": texto(v("MANZANA")), "lote": lote, "cliente": cliente, "estatus": est,
+            "monto": r2(monto) if monto else None,
+            "enganche": r2(enganche) if enganche else None,
+            "ingreso": r2(num(v("INGRESO"))),
+        }
+        if est == "vendido_sin_dato":
+            reg["categoria"] = texto(v("CATEGORIA")) or "Cliente sin dato capturado"
+        if texto(v("NOTA")):
+            reg["nota"] = texto(v("NOTA"))
+
+        if proyecto not in porp:
+            porp[proyecto] = []
+            orden.append(proyecto)
+        porp[proyecto].append(reg)
+
+    diag.append("maestro: %d proyectos, %d lotes%s"
+                % (len(orden), sum(len(v) for v in porp.values()),
+                   ", %d filas omitidas" % saltadas if saltadas else ""))
+    return [{"nombre": n, "lotes": porp[n]} for n in orden]
+
+
+def agregar(proyectos):
+    """Calcula totales y alertas a partir de la lista de proyectos con lotes."""
+    alertas = []
+    salida = []
+    for p in proyectos:
+        lotes = p["lotes"]
         for l in lotes:
             if l["estatus"] == "vendido_sin_dato":
                 alertas.append({"proyecto": p["nombre"], "mza": l["mza"], "lote": l["lote"],
                                 "cliente": l["cliente"], "categoria": l.get("categoria", "")})
-
-        proyectos.append({
+        salida.append({
             "nombre": p["nombre"],
             "total": len(lotes),
             "disponibles": sum(1 for l in lotes if l["estatus"] == "disponible"),
@@ -272,8 +353,40 @@ def main():
             "ingresos": r2(sum(l["ingreso"] for l in lotes)),
             "lotes": lotes,
         })
+    salida.sort(key=lambda p: -p["total"])
 
-    proyectos.sort(key=lambda p: -p["total"])
+    def clave(a):
+        def n(x):
+            return (0, int(x)) if str(x).strip().isdigit() else (1, str(x))
+        return (a["proyecto"], n(a["mza"]), n(a["lote"]))
+
+    alertas.sort(key=clave)   # mismo orden lea de donde lea
+    return salida, alertas
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--salida", default=os.path.join(RAIZ, "datos.json"))
+    ap.add_argument("--silencio", action="store_true")
+    ap.add_argument("--solo-datos", dest="solo_datos", action="store_true",
+                    help="genera solo el json, sin regenerar index.html")
+    ap.add_argument("--desde", choices=["maestro", "bases"], default=None,
+                    help="de donde leer; por defecto, lo que diga reglas.json")
+    args = ap.parse_args()
+
+    reglas = json.load(open(os.path.join(AQUI, "reglas.json"), encoding="utf-8"))
+    fuente = args.desde or reglas.get("fuente", "bases")
+    diag = []
+
+    if fuente == "maestro":
+        ruta = os.path.normpath(os.path.join(RAIZ, reglas.get("archivo_maestro", "AUDITORIA_LOTES.xlsx")))
+        diag.append("FUENTE: maestro -> %s" % ruta)
+        crudos = desde_maestro(ruta, diag)
+    else:
+        diag.append("FUENTE: las 18 bases originales")
+        crudos = desde_bases(reglas, diag)
+
+    proyectos, alertas = agregar(crudos)
     datos = {
         "generated": datetime.date.today().isoformat(),
         "grand": {
