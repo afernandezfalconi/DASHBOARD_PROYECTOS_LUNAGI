@@ -54,6 +54,9 @@ function onOpen() {
     .addItem('Traer m2 desde las bases', 'traerMetrosCuadrados')
     .addItem('Traer tipo de venta desde las bases', 'traerTipoDeVenta')
     .addSeparator()
+    .addItem('Revisar lotes cancelados', 'revisarLotesCancelados')
+    .addItem('Aplicar correcciones de cancelados', 'aplicarCorreccionesCancelados')
+    .addSeparator()
     .addItem('Abrir el dashboard', 'abrirDashboard')
     .addItem('Configurar token de GitHub', 'configurarToken')
     .addToUi();
@@ -495,6 +498,167 @@ function traerColumna(archivo, encabezado, titulo, ancho, despuesDe) {
   ui.alert('Listo', msg, ui.ButtonSet.OK);
 }
 
+
+// -------------------------------------------- lotes con datos cancelados
+/**
+ * Corrige los lotes que quedaron con los datos del comprador CANCELADO en vez
+ * de los del comprador real.
+ *
+ * Origen: la auditoria original suponia que la fila posterior al marcador
+ * CANCELADOS sustituia a la de arriba. Es al reves. El Sheet se sembro con esa
+ * regla, asi que esos lotes muestran a quien se dio de baja y su anticipo.
+ *
+ * Los datos correctos vienen de la pestana CORRECCIONES, que se genera con
+ * scripts/revisar_cancelados.py y se importa a mano: lleva nombres de
+ * compradores y el repositorio es publico, por eso no se descarga de GitHub.
+ *
+ * NUNCA pisa un lote que ya no coincide con el dato cancelado: si lo corregiste
+ * a mano o lo dejaste distinto, se reporta y se salta.
+ */
+var HOJA_CORR = 'CORRECCIONES';
+
+function leerCorrecciones() {
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA_CORR);
+  if (!hoja) {
+    throw new Error('Falta la pestaña ' + HOJA_CORR + '.\n\n' +
+      'Impórtala así: Archivo > Importar > Subir > revisar_cancelados.csv, ' +
+      'y elige "Insertar hoja(s) nueva(s)". Luego renómbrala ' + HOJA_CORR + '.');
+  }
+  const filas = hoja.getDataRange().getValues();
+  if (filas.length < 2) throw new Error('La pestaña ' + HOJA_CORR + ' está vacía');
+
+  const cab = filas[0].map(norm);
+  const col = {};
+  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE_CORRECTO', 'CLIENTE_CANCELADO',
+   'MONTO_CORRECTO', 'ENGANCHE_CORRECTO', 'INGRESO_CORRECTO'].forEach(function (c) {
+    const j = cab.indexOf(c);
+    if (j < 0) throw new Error('A ' + HOJA_CORR + ' le falta la columna ' + c);
+    col[c] = j;
+  });
+
+  return filas.slice(1).filter(function (f) { return texto(f[col.PROYECTO]); })
+    .map(function (f) {
+      return {
+        clave: texto(f[col.PROYECTO]) + '|' + texto(f[col.MANZANA]) + '|' + texto(f[col.LOTE]),
+        proyecto: texto(f[col.PROYECTO]), mza: texto(f[col.MANZANA]), lote: texto(f[col.LOTE]),
+        correcto: texto(f[col.CLIENTE_CORRECTO]),
+        cancelado: texto(f[col.CLIENTE_CANCELADO]),
+        monto: num(f[col.MONTO_CORRECTO]),
+        enganche: num(f[col.ENGANCHE_CORRECTO]),
+        ingreso: num(f[col.INGRESO_CORRECTO])
+      };
+    });
+}
+
+/** Clasifica cada correccion contra lo que hoy tiene la hoja LOTES. */
+function cotejarCancelados() {
+  const corr = leerCorrecciones();
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+  const filas = hoja.getDataRange().getValues();
+
+  let iCab = -1;
+  for (let i = 0; i < Math.min(filas.length, 10); i++) {
+    if (norm(filas[i][0]) === 'PROYECTO') { iCab = i; break; }
+  }
+  if (iCab < 0) throw new Error('No encuentro el encabezado de ' + HOJA);
+  const cab = filas[iCab].map(norm);
+  const c = {};
+  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'MONTO', 'ENGANCHE', 'INGRESO'].forEach(function (n) {
+    c[n] = cab.indexOf(n);
+  });
+
+  const donde = {};
+  for (let i = iCab + 1; i < filas.length; i++) {
+    const k = texto(filas[i][c.PROYECTO]) + '|' + texto(filas[i][c.MANZANA]) + '|' + texto(filas[i][c.LOTE]);
+    if (texto(filas[i][c.PROYECTO])) donde[k] = i;
+  }
+
+  const porCorregir = [], yaHechos = [], aMano = [], sinFila = [];
+  corr.forEach(function (x) {
+    const i = donde[x.clave];
+    if (i === undefined) { sinFila.push(x); return; }
+    const actual = norm(filas[i][c.CLIENTE]);
+    if (actual === norm(x.correcto)) { yaHechos.push(x); return; }
+    if (actual === norm(x.cancelado)) { x.fila = i + 1; porCorregir.push(x); return; }
+    x.actual = texto(filas[i][c.CLIENTE]);
+    aMano.push(x);
+  });
+
+  return { corr: corr, col: c, hoja: hoja, porCorregir: porCorregir,
+           yaHechos: yaHechos, aMano: aMano, sinFila: sinFila };
+}
+
+function revisarLotesCancelados() {
+  const ui = SpreadsheetApp.getUi();
+  let r;
+  try { r = cotejarCancelados(); }
+  catch (e) { ui.alert('No pude revisar', String(e.message), ui.ButtonSet.OK); return; }
+
+  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso; }, 0);
+  const lineas = [
+    'Lotes que quedaron con los datos del comprador cancelado:', '',
+    '  Por corregir      ' + r.porCorregir.length,
+    '  Ya corregidos     ' + r.yaHechos.length,
+    '  Cambiados a mano  ' + r.aMano.length + '  (no se tocan)',
+    '  Sin fila en LOTES ' + r.sinFila.length
+  ];
+  if (r.porCorregir.length) {
+    lineas.push('', 'Ingreso real que entraría: $' + dif.toLocaleString('es-MX'), '',
+                'Los 8 de mayor monto:');
+    r.porCorregir.slice().sort(function (a, b) { return b.ingreso - a.ingreso; })
+      .slice(0, 8).forEach(function (x) {
+        lineas.push('  ' + x.proyecto + ' ' + x.mza + '/' + x.lote + '  ' +
+                    x.correcto.slice(0, 26) + '  $' + x.ingreso.toLocaleString('es-MX'));
+      });
+    lineas.push('', 'Usa "Aplicar correcciones de cancelados" para escribirlos.');
+  }
+  if (r.aMano.length) {
+    lineas.push('', 'Estos ya no coinciden ni con uno ni con otro, revísalos tú:');
+    r.aMano.slice(0, 6).forEach(function (x) {
+      lineas.push('  ' + x.proyecto + ' ' + x.mza + '/' + x.lote + '  tiene: ' + x.actual.slice(0, 30));
+    });
+  }
+  ui.alert('Revisión de cancelados', lineas.join(String.fromCharCode(10)), ui.ButtonSet.OK);
+}
+
+function aplicarCorreccionesCancelados() {
+  const ui = SpreadsheetApp.getUi();
+  let r;
+  try { r = cotejarCancelados(); }
+  catch (e) { ui.alert('No pude revisar', String(e.message), ui.ButtonSet.OK); return; }
+
+  if (!r.porCorregir.length) {
+    ui.alert('Nada que aplicar',
+      'Ningún lote conserva los datos del comprador cancelado.' +
+      (r.aMano.length ? String.fromCharCode(10) + String.fromCharCode(10) +
+        r.aMano.length + ' quedaron con un valor distinto y hay que verlos a mano.' : ''),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso; }, 0);
+  const ok = ui.alert('Aplicar correcciones',
+    'Se van a corregir ' + r.porCorregir.length + ' lote(s): cliente, monto, ' +
+    'enganche e ingreso pasan a los de la venta real.' + String.fromCharCode(10) +
+    String.fromCharCode(10) + 'Ingreso que entra: $' + dif.toLocaleString('es-MX') +
+    String.fromCharCode(10) + String.fromCharCode(10) +
+    'No se toca ningún lote que ya hayas cambiado. ¿Continuar?',
+    ui.ButtonSet.YES_NO);
+  if (ok !== ui.Button.YES) return;
+
+  const c = r.col;
+  r.porCorregir.forEach(function (x) {
+    r.hoja.getRange(x.fila, c.CLIENTE + 1).setValue(x.correcto);
+    if (c.MONTO >= 0) r.hoja.getRange(x.fila, c.MONTO + 1).setValue(x.monto || '');
+    if (c.ENGANCHE >= 0) r.hoja.getRange(x.fila, c.ENGANCHE + 1).setValue(x.enganche || '');
+    if (c.INGRESO >= 0) r.hoja.getRange(x.fila, c.INGRESO + 1).setValue(x.ingreso || 0);
+  });
+
+  ui.alert('Listo',
+    r.porCorregir.length + ' lote(s) corregidos.' + String.fromCharCode(10) +
+    String.fromCharCode(10) + 'Revisa el RESUMEN y publica cuando estés conforme.',
+    ui.ButtonSet.OK);
+}
 
 // ------------------------------------------------------------- revisar
 function revisar() {
