@@ -57,6 +57,7 @@ function onOpen() {
     .addItem('Revisar lotes cancelados', 'revisarLotesCancelados')
     .addItem('Aplicar correcciones de cancelados', 'aplicarCorreccionesCancelados')
     .addItem('Corregir vendidos sin comprador', 'corregirVendidosSinComprador')
+    .addItem('Marcar en rosa los que hay que revisar', 'marcarParaRevisar')
     .addSeparator()
     .addItem('Abrir el dashboard', 'abrirDashboard')
     .addItem('Configurar token de GitHub', 'configurarToken')
@@ -591,6 +592,7 @@ function cotejarCancelados() {
       return;
     }
     x.actual = texto(filas[i][c.CLIENTE]);
+    x.fila = i + 1;
     aMano.push(x);
   });
 
@@ -678,6 +680,70 @@ function aplicarCorreccionesCancelados() {
   ui.alert('Listo',
     r.porCorregir.length + ' lote(s) corregidos.' + String.fromCharCode(10) +
     String.fromCharCode(10) + 'Revisa el RESUMEN y publica cuando estés conforme.',
+    ui.ButtonSet.OK);
+}
+
+var ROSA = '#FFC7CE';
+
+/**
+ * Pinta de rosa el cliente de los lotes que hay que mirar a mano: los que ya no
+ * coinciden ni con el comprador real ni con el cancelado, porque alguien los
+ * edito. El script no los toca a proposito, asi que sin una marca visible se
+ * pierden entre 2,102 filas.
+ *
+ * Solo cambia el color de relleno. No escribe ni un dato.
+ */
+function marcarParaRevisar() {
+  const ui = SpreadsheetApp.getUi();
+  let r;
+  try { r = cotejarCancelados(); }
+  catch (e) { ui.alert('No pude revisar', String(e.message), ui.ButtonSet.OK); return; }
+
+  const hoja = r.hoja, jCli = r.col.CLIENTE;
+  const filas = hoja.getDataRange().getValues();
+
+  // primero se borra el rosa anterior, para que la marca sea siempre la de hoy
+  let limpiadas = 0;
+  const fondos = hoja.getRange(1, jCli + 1, filas.length, 1).getBackgrounds();
+  for (let i = 0; i < fondos.length; i++) {
+    if (String(fondos[i][0]).toUpperCase() === ROSA) {
+      hoja.getRange(i + 1, jCli + 1).setBackground(null);
+      limpiadas++;
+    }
+  }
+
+  const donde = {};
+  for (let i = 0; i < filas.length; i++) {
+    const k = texto(filas[i][r.col.PROYECTO]) + '|' + texto(filas[i][r.col.MANZANA]) +
+              '|' + texto(filas[i][r.col.LOTE]);
+    if (texto(filas[i][r.col.PROYECTO])) donde[k] = i + 1;
+  }
+
+  const lineas = [];
+  r.aMano.forEach(function (x) {
+    const fila = donde[x.clave];
+    if (!fila) return;
+    hoja.getRange(fila, jCli + 1).setBackground(ROSA);
+    lineas.push('  fila ' + fila + '  ' + x.proyecto + ' ' + x.mza + '/' + x.lote);
+    lineas.push('      tiene:    ' + (x.actual || '(vacío)'));
+    lineas.push('      esperaba: ' + (x.correcto || '(vacío)') +
+                '   /   cancelado: ' + x.cancelado);
+  });
+
+  if (!r.aMano.length) {
+    ui.alert('Nada que marcar',
+      'No hay lotes con un valor distinto.' +
+      (limpiadas ? String.fromCharCode(10) + String.fromCharCode(10) +
+        'Se quitaron ' + limpiadas + ' marcas rosas anteriores.' : ''),
+      ui.ButtonSet.OK);
+    return;
+  }
+
+  ui.alert('Marcados en rosa (' + r.aMano.length + ')',
+    ['Están pintados en la columna CLIENTE:', ''].concat(lineas)
+      .concat(['', 'El color es solo una señal: no se cambió ningún dato.',
+               'Vuelve a correr esta opción para limpiar y remarcar.'])
+      .join(String.fromCharCode(10)),
     ui.ButtonSet.OK);
 }
 
