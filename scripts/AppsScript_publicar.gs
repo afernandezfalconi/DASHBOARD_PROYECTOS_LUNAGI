@@ -164,7 +164,12 @@ function construirDatos() {
   col.M2 = cab.indexOf('M2');                  // opcional: -1 si aun no se ha traido
   col.TIPO = cab.indexOf('TIPO VENTA');        // opcional: contado / credito
 
-  const porProyecto = {}, orden = [], problemas = [];
+  // Dos listas distintas, a proposito:
+  //   omitidas -> filas que NO entran al tablero
+  //   reparos  -> filas que SI entran pero conviene mirar
+  // Mezclarlas hacia que el aviso dijera "no se van a incluir" sobre lotes que
+  // si se incluian, que es peor que no avisar.
+  const porProyecto = {}, orden = [], problemas = [], reparos = [];
 
   for (let i = iCab + 1; i < filas.length; i++) {
     const f = filas[i];
@@ -191,8 +196,8 @@ function construirDatos() {
     // si la venta se cancelo, ese anticipo ya no es de este lote. Se fuerza a
     // cero aqui, no solo en la hoja, para que ningun descuido lo cuele al total.
     if (!cliente && (ingreso || monto || enganche)) {
-      problemas.push('Fila ' + (i + 1) + ': sin cliente pero con importes ($' +
-                     ingreso.toLocaleString('es-MX') + ') — no se suman');
+      reparos.push('Fila ' + (i + 1) + ': sin cliente pero con importes ($' +
+                   ingreso.toLocaleString('es-MX') + ') — se ponen en cero');
       monto = 0; enganche = 0; ingreso = 0;
     }
 
@@ -218,8 +223,8 @@ function construirDatos() {
         : (texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado');
     }
     if (!cliente && (est === 'vendido' || est === 'vendido_sin_dato')) {
-      problemas.push('Fila ' + (i + 1) + ': marcado ' + texto(f[col.ESTATUS]) +
-                     ' pero sin comprador');
+      reparos.push('Fila ' + (i + 1) + ': marcado ' + texto(f[col.ESTATUS]) +
+                   ' sin comprador — usa "Corregir vendidos sin comprador"');
     }
     if (texto(f[col.NOTA])) reg.nota = texto(f[col.NOTA]);
 
@@ -300,7 +305,8 @@ function construirDatos() {
       projects: proyectos,
       alerts: alertas
     },
-    problemas: problemas
+    problemas: problemas,
+    reparos: reparos
   };
 }
 
@@ -916,9 +922,14 @@ function revisar() {
     '  Proyectos       ' + r.datos.projects.length;
 
   if (r.problemas.length) {
-    msg += '\n\nFILAS CON PROBLEMA (' + r.problemas.length + '), no se incluyen:\n' +
-           r.problemas.slice(0, 12).join('\n');
-    if (r.problemas.length > 12) msg += '\n  ...y ' + (r.problemas.length - 12) + ' más';
+    msg += '\n\nFILAS DESCARTADAS (' + r.problemas.length + '), NO entran al tablero:\n' +
+           r.problemas.slice(0, 8).join('\n');
+    if (r.problemas.length > 8) msg += '\n  ...y ' + (r.problemas.length - 8) + ' más';
+  }
+  if (r.reparos && r.reparos.length) {
+    msg += '\n\nSÍ ENTRAN, pero conviene revisarlas (' + r.reparos.length + '):\n' +
+           r.reparos.slice(0, 8).join('\n');
+    if (r.reparos.length > 8) msg += '\n  ...y ' + (r.reparos.length - 8) + ' más';
   }
   msg += textoAvisos(avisosDeCoherencia(r.datos.projects));
   ui.alert('Revisión', msg, ui.ButtonSet.OK);
@@ -940,9 +951,17 @@ function publicar() {
 
   if (r.problemas.length) {
     const seguir = ui.alert(
-      'Hay ' + r.problemas.length + ' fila(s) con problema',
+      'Hay ' + r.problemas.length + ' fila(s) descartada(s)',
       r.problemas.slice(0, 10).join('\n') +
-      '\n\nEsas filas NO se van a incluir. ¿Publico de todos modos?',
+      '\n\nEsas filas NO entran al tablero. ¿Publico de todos modos?',
+      ui.ButtonSet.YES_NO);
+    if (seguir !== ui.Button.YES) return;
+  }
+  if (r.reparos && r.reparos.length) {
+    const seguir = ui.alert(
+      'Hay ' + r.reparos.length + ' fila(s) que conviene revisar',
+      r.reparos.slice(0, 10).join('\n') +
+      '\n\nEstas SÍ se van a incluir en el tablero. ¿Publico de todos modos?',
       ui.ButtonSet.YES_NO);
     if (seguir !== ui.Button.YES) return;
   }
