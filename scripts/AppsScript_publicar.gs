@@ -58,6 +58,7 @@ function onOpen() {
     .addItem('Aplicar correcciones de cancelados', 'aplicarCorreccionesCancelados')
     .addItem('Corregir vendidos sin comprador', 'corregirVendidosSinComprador')
     .addItem('Marcar en rosa los que hay que revisar', 'marcarParaRevisar')
+    .addItem('Sincronizar categorías con el tablero', 'sincronizarCategorias')
     .addSeparator()
     .addItem('Abrir el dashboard', 'abrirDashboard')
     .addItem('Configurar token de GitHub', 'configurarToken')
@@ -706,6 +707,67 @@ function aplicarCorreccionesCancelados() {
     r.porCorregir.length + ' lote(s) corregidos.' + String.fromCharCode(10) +
     String.fromCharCode(10) + 'Revisa el RESUMEN y publica cuando estés conforme.',
     ui.ButtonSet.OK);
+}
+
+/**
+ * Escribe en la hoja la categoria que el tablero deduce sola, para que el Sheet
+ * y el dashboard digan lo mismo.
+ *
+ * Sin esto la categoria solo existia al publicar: el tablero mostraba "Pago de
+ * comision a asesor" mientras la columna CATEGORIA seguia diciendo "Cliente sin
+ * dato capturado". Dos versiones de la verdad para el mismo lote.
+ */
+function sincronizarCategorias() {
+  const ui = SpreadsheetApp.getUi();
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+  const filas = hoja.getDataRange().getValues();
+
+  let iCab = -1;
+  for (let i = 0; i < Math.min(filas.length, 10); i++) {
+    if (norm(filas[i][0]) === 'PROYECTO') { iCab = i; break; }
+  }
+  if (iCab < 0) { ui.alert('No encuentro el encabezado'); return; }
+  const cab = filas[iCab].map(norm);
+  const jEst = cab.indexOf('ESTATUS'), jCat = cab.indexOf('CATEGORIA'),
+        jTipo = cab.indexOf('TIPO VENTA');
+  if (jEst < 0 || jCat < 0) { ui.alert('Faltan columnas ESTATUS o CATEGORIA'); return; }
+  if (jTipo < 0) {
+    ui.alert('Falta la columna TIPO VENTA',
+      'Usa primero "Traer tipo de venta desde las bases".', ui.ButtonSet.OK);
+    return;
+  }
+
+  const cambios = [];
+  for (let i = iCab + 1; i < filas.length; i++) {
+    if (!texto(filas[i][0]) || !texto(filas[i][2])) continue;
+    if (norm(filas[i][jEst]) !== 'VENDIDO SIN DATO') continue;
+    if (norm(filas[i][jTipo]) !== 'COMISION') continue;
+    const actual = texto(filas[i][jCat]);
+    if (actual === 'Pago de comisión a asesor') continue;
+    cambios.push({ fila: i + 1, proyecto: texto(filas[i][0]),
+                   mza: texto(filas[i][1]), lote: texto(filas[i][2]), antes: actual });
+  }
+
+  if (!cambios.length) {
+    ui.alert('Nada que sincronizar',
+      'Las categorías de la hoja ya coinciden con las del tablero.', ui.ButtonSet.OK);
+    return;
+  }
+
+  const detalle = cambios.slice(0, 12).map(function (c) {
+    return '  ' + c.proyecto + ' ' + c.mza + '/' + c.lote + '   ' + (c.antes || '(vacía)');
+  });
+  if (ui.alert('Sincronizar categorías',
+      ['Se va a escribir "Pago de comisión a asesor" en ' + cambios.length + ' lote(s):', '']
+        .concat(detalle).concat(['', 'Solo cambia la columna CATEGORIA. ¿Continuar?'])
+        .join(String.fromCharCode(10)),
+      ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+  cambios.forEach(function (c) {
+    hoja.getRange(c.fila, jCat + 1).setValue('Pago de comisión a asesor');
+  });
+  ui.alert('Listo', cambios.length + ' categoría(s) actualizadas en la hoja.',
+           ui.ButtonSet.OK);
 }
 
 var ROSA = '#FFC7CE';
