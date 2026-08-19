@@ -52,6 +52,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Marcar apartados de socios', 'normalizarApartadosDeSocios')
     .addItem('Traer m2 desde las bases', 'traerMetrosCuadrados')
+    .addItem('Traer tipo de venta desde las bases', 'traerTipoDeVenta')
     .addSeparator()
     .addItem('Abrir el dashboard', 'abrirDashboard')
     .addItem('Configurar token de GitHub', 'configurarToken')
@@ -154,7 +155,8 @@ function construirDatos() {
     if (j < 0) throw new Error('Falta la columna ' + c + ' en la hoja ' + HOJA);
     col[c] = j;
   });
-  col.M2 = cab.indexOf('M2');   // opcional: -1 si aun no se ha traido
+  col.M2 = cab.indexOf('M2');                  // opcional: -1 si aun no se ha traido
+  col.TIPO = cab.indexOf('TIPO VENTA');        // opcional: contado / credito
 
   const porProyecto = {}, orden = [], problemas = [];
 
@@ -187,6 +189,8 @@ function construirDatos() {
     };
     const sup = col.M2 >= 0 ? num(f[col.M2]) : 0;
     if (sup > 0) reg.m2 = r2(sup);
+    const tipo = col.TIPO >= 0 ? texto(f[col.TIPO]) : '';
+    if (tipo) reg.tipo = tipo;
     if (est === 'vendido_sin_dato') {
       reg.categoria = texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado';
     }
@@ -224,6 +228,12 @@ function construirDatos() {
       m2_disponible: sup(function (l) { return l.estatus === 'disponible'; }),
       m2_vendido: sup(vendido),
       lotes_con_m2: lotes.filter(function (l) { return !!l.m2; }).length,
+      contado: lotes.filter(function (l) { return vendido(l) && norm(l.tipo) === 'CONTADO'; }).length,
+      credito: lotes.filter(function (l) { return vendido(l) && norm(l.tipo) === 'CREDITO'; }).length,
+      ingresos_contado: r2(lotes.reduce(function (s, l) {
+        return s + (vendido(l) && norm(l.tipo) === 'CONTADO' ? l.ingreso : 0); }, 0)),
+      ingresos_credito: r2(lotes.reduce(function (s, l) {
+        return s + (vendido(l) && norm(l.tipo) === 'CREDITO' ? l.ingreso : 0); }, 0)),
       lotes: lotes
     });
   });
@@ -254,7 +264,11 @@ function construirDatos() {
         m2_available: r2(suma('m2_disponible')),
         m2_sold: r2(suma('m2_vendido')),
         lots_with_m2: suma('lotes_con_m2'),
-        price_per_m2: precioPorM2(proyectos)
+        price_per_m2: precioPorM2(proyectos),
+        cash_lots: suma('contado'),
+        credit_lots: suma('credito'),
+        cash_income: r2(suma('ingresos_contado')),
+        credit_income: r2(suma('ingresos_credito'))
       },
       projects: proyectos,
       alerts: alertas
@@ -369,18 +383,32 @@ function normalizarApartadosDeSocios() {
  *
  * Solo escribe donde la celda esta vacia: nunca pisa un m2 capturado a mano.
  */
+function traerTipoDeVenta() {
+  traerColumna('tipo_venta.json', 'TIPO VENTA', 'Tipo de venta', 140);
+}
+
 function traerMetrosCuadrados() {
+  traerColumna('m2.json', 'M2', 'Superficies', 90);
+}
+
+/**
+ * Rellena una columna leyendo un json del repositorio, generado desde las
+ * bases originales. Empareja por PROYECTO + MANZANA + LOTE, asi que no importa
+ * el orden de las filas ni las ediciones hechas a mano.
+ *
+ * Solo escribe donde la celda esta vacia: nunca pisa un dato ya capturado.
+ */
+function traerColumna(archivo, encabezado, titulo, ancho) {
   const ui = SpreadsheetApp.getUi();
   const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
   if (!token) { ui.alert('Falta el token', 'Usa: Dashboard > Configurar token', ui.ButtonSet.OK); return; }
 
   let mapa;
-  try { mapa = JSON.parse(traerDeGitHub('m2.json', token)); }
-  catch (e) { ui.alert('No pude leer m2.json', String(e.message), ui.ButtonSet.OK); return; }
+  try { mapa = JSON.parse(traerDeGitHub(archivo, token)); }
+  catch (e) { ui.alert('No pude leer ' + archivo, String(e.message), ui.ButtonSet.OK); return; }
 
   const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
-  const rango = hoja.getDataRange();
-  const filas = rango.getValues();
+  const filas = hoja.getDataRange().getValues();
 
   let iCab = -1;
   for (let i = 0; i < Math.min(filas.length, 10); i++) {
@@ -389,48 +417,48 @@ function traerMetrosCuadrados() {
   if (iCab < 0) { ui.alert('No encuentro el encabezado'); return; }
 
   const cab = filas[iCab].map(norm);
-  let jM2 = cab.indexOf('M2');
-  if (jM2 < 0) {                       // la columna no existe todavia: se crea
-    jM2 = filas[iCab].length;
-    hoja.getRange(iCab + 1, jM2 + 1).setValue('M2');
-    hoja.getRange(iCab + 1, jM2 + 1).setFontWeight('bold')
-        .setBackground('#1F4E79').setFontColor('#FFFFFF')
+  let jCol = cab.indexOf(encabezado);
+  if (jCol < 0) {                       // la columna no existe todavia: se crea
+    jCol = filas[iCab].length;
+    hoja.getRange(iCab + 1, jCol + 1).setValue(encabezado)
+        .setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF')
         .setHorizontalAlignment('center');
-    hoja.setColumnWidth(jM2 + 1, 90);
+    hoja.setColumnWidth(jCol + 1, ancho);
   }
 
   let puestos = 0, yaTenian = 0, sinDato = 0;
-  const faltantes = {};
-  const escribir = [];
+  const faltantes = {}, escribir = [];
 
   for (let i = iCab + 1; i < filas.length; i++) {
     const proyecto = texto(filas[i][0]);
     const lote = texto(filas[i][2]);
     if (!proyecto || !lote) continue;
 
-    const actual = jM2 < filas[i].length ? num(filas[i][jM2]) : 0;
-    if (actual > 0) { yaTenian++; continue; }
+    if (jCol < filas[i].length && texto(filas[i][jCol])) { yaTenian++; continue; }
 
-    const delProyecto = mapa[proyecto] || {};
-    const v = delProyecto[texto(filas[i][1]) + '|' + lote];
+    const v = (mapa[proyecto] || {})[texto(filas[i][1]) + '|' + lote];
     if (v) { escribir.push([i + 1, v]); puestos++; }
     else { sinDato++; faltantes[proyecto] = (faltantes[proyecto] || 0) + 1; }
   }
 
-  escribir.forEach(function (e) { hoja.getRange(e[0], jM2 + 1).setValue(e[1]); });
+  escribir.forEach(function (e) { hoja.getRange(e[0], jCol + 1).setValue(e[1]); });
 
-  let msg = 'Superficies traídas desde las bases:\n\n' +
-            '  Rellenados      ' + puestos + '\n' +
-            '  Ya tenían dato  ' + yaTenian + '\n' +
-            '  Sin superficie  ' + sinDato + '\n';
+  const lineas = [
+    titulo + ' desde las bases:', '',
+    '  Rellenados      ' + puestos,
+    '  Ya tenían dato  ' + yaTenian,
+    '  Sin dato        ' + sinDato
+  ];
   const pend = Object.keys(faltantes).sort(function (a, b) { return faltantes[b] - faltantes[a]; });
   if (pend.length) {
-    msg += '\nProyectos con lotes sin m² (hay que capturarlos a mano):\n' +
-      pend.slice(0, 10).map(function (p) { return '  ' + p + ': ' + faltantes[p]; }).join('\n');
+    lineas.push('', 'Proyectos con lotes sin dato (hay que capturarlos a mano):');
+    pend.slice(0, 10).forEach(function (p) { lineas.push('  ' + p + ': ' + faltantes[p]); });
   }
-  msg += '\n\nNo se pisó ningún m² que ya estuviera capturado.';
+  lineas.push('', 'No se pisó nada de lo que ya estaba capturado.');
+  const msg = lineas.join(String.fromCharCode(10));
   ui.alert('Listo', msg, ui.ButtonSet.OK);
 }
+
 
 // ------------------------------------------------------------- revisar
 function revisar() {
