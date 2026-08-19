@@ -181,16 +181,28 @@ function construirDatos() {
       continue;
     }
 
-    const monto = num(f[col.MONTO]);
-    const enganche = num(f[col.ENGANCHE]);
+    const cliente = texto(f[col.CLIENTE]);
+    let monto = num(f[col.MONTO]);
+    let enganche = num(f[col.ENGANCHE]);
+    let ingreso = num(f[col.INGRESO]);
+
+    // Un lote sin comprador no puede tener dinero cobrado ni precio pactado:
+    // si la venta se cancelo, ese anticipo ya no es de este lote. Se fuerza a
+    // cero aqui, no solo en la hoja, para que ningun descuido lo cuele al total.
+    if (!cliente && (ingreso || monto || enganche)) {
+      problemas.push('Fila ' + (i + 1) + ': sin cliente pero con importes ($' +
+                     ingreso.toLocaleString('es-MX') + ') — no se suman');
+      monto = 0; enganche = 0; ingreso = 0;
+    }
+
     const reg = {
       mza: texto(f[col.MANZANA]),
       lote: lote,
-      cliente: texto(f[col.CLIENTE]),
+      cliente: cliente,
       estatus: est,
       monto: monto ? r2(monto) : null,
       enganche: enganche ? r2(enganche) : null,
-      ingreso: r2(num(f[col.INGRESO]))
+      ingreso: r2(ingreso)
     };
     const sup = col.M2 >= 0 ? num(f[col.M2]) : 0;
     if (sup > 0) reg.m2 = r2(sup);
@@ -198,6 +210,10 @@ function construirDatos() {
     if (tipo) reg.tipo = tipo;
     if (est === 'vendido_sin_dato') {
       reg.categoria = texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado';
+    }
+    if (!cliente && (est === 'vendido' || est === 'vendido_sin_dato')) {
+      problemas.push('Fila ' + (i + 1) + ': marcado ' + texto(f[col.ESTATUS]) +
+                     ' pero sin comprador');
     }
     if (texto(f[col.NOTA])) reg.nota = texto(f[col.NOTA]);
 

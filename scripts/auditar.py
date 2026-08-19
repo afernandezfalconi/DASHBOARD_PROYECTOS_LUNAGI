@@ -320,11 +320,21 @@ def desde_maestro(ruta, diag):
 
         cliente = texto(v("CLIENTE"))
         monto, enganche = num(v("MONTO")), num(v("ENGANCHE"))
+        ingreso = num(v("INGRESO"))
+
+        # Sin comprador no hay dinero: si la venta se cancelo, ese anticipo ya no
+        # pertenece a este lote. Se fuerza a cero aqui tambien, para que la regla
+        # no dependa de que la hoja este bien capturada.
+        if not cliente and (ingreso or monto or enganche):
+            diag.append("   !! %s mza %s lote %s: sin cliente pero con importes; no se suman"
+                        % (proyecto, texto(v("MANZANA")), lote))
+            monto = enganche = ingreso = 0.0
+
         reg = {
             "mza": texto(v("MANZANA")), "lote": lote, "cliente": cliente, "estatus": est,
             "monto": r2(monto) if monto else None,
             "enganche": r2(enganche) if enganche else None,
-            "ingreso": r2(num(v("INGRESO"))),
+            "ingreso": r2(ingreso),
         }
         if est == "vendido_sin_dato":
             reg["categoria"] = texto(v("CATEGORIA")) or "Cliente sin dato capturado"
