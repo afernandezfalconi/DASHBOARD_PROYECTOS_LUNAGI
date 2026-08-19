@@ -173,6 +173,9 @@
   .badge.b-nodata { background: color-mix(in srgb, var(--status-warning) 22%, transparent); color: #8a5c00; }
   .badge.b-apart { background: color-mix(in srgb, var(--status-serious) 20%, transparent); color: #9a4a1e; }
   .badge.b-canc { background: color-mix(in srgb, var(--text-secondary) 15%, transparent); color: var(--text-secondary); }
+  .kpis.m2 { margin-top: -6px; }
+  .tile .cover { font-size: 11px; color: var(--text-secondary); margin-top: 3px; display:block; }
+  .tile.est { border-left: 3px solid var(--status-warning); }
   .cat-tag { font-size:11px; padding:2px 7px; border-radius:5px; background: var(--surface-2, rgba(127,127,127,.14)); color: var(--text-secondary); white-space:nowrap; }
   :root[data-theme="dark"] .badge.b-nodata, @media (prefers-color-scheme: dark) { }
   .badge-dot { width:6px; height:6px; border-radius:50%; background: currentColor; }
@@ -200,6 +203,16 @@
     <div class="tile"><div class="label">Lotes vendidos</div><div class="value" id="kpiSold">–</div></div>
     <div class="tile"><div class="label">Ingresos registrados</div><div class="value" id="kpiIncome">–</div></div>
     <div class="tile alert"><div class="label">Vendidos sin ingreso registrado</div><div class="value" id="kpiAlert">–</div></div>
+  </div>
+
+  <div class="kpis m2">
+    <div class="tile"><div class="label">m² disponibles</div><div class="value" id="kpiM2Disp">–</div>
+      <span class="cover" id="kpiM2Cov"></span></div>
+    <div class="tile"><div class="label">m² vendidos</div><div class="value" id="kpiM2Vend">–</div>
+      <span class="cover" id="kpiM2VendSub"></span></div>
+    <div class="tile est"><div class="label">Valor estimado del inventario disponible</div>
+      <div class="value" id="kpiValor">–</div>
+      <span class="cover" id="kpiValorSub"></span></div>
   </div>
 
   <div class="filters">
@@ -248,6 +261,8 @@
             <th data-key="vendidos" class="num">Vendidos</th>
             <th data-key="vendidos_con_ingreso" class="num">Con ingreso</th>
             <th data-key="vendidos_sin_ingreso" class="num">Sin ingreso</th>
+            <th data-key="m2_disponible" class="num">m² disp.</th>
+            <th data-key="m2_vendido" class="num">m² vend.</th>
             <th data-key="ingresos" class="num">Ingresos</th>
           </tr>
         </thead>
@@ -285,6 +300,7 @@
             <th data-key="mza">Mza</th>
             <th data-key="lote">Lote</th>
             <th data-key="cliente">Cliente</th>
+            <th data-key="m2" class="num">m²</th>
             <th data-key="estatus">Estatus</th>
             <th data-key="monto" class="num">Monto/Precio</th>
             <th data-key="enganche" class="num">Enganche</th>
@@ -365,7 +381,10 @@ applyThemeLabel();
 function currentGrand(){
   if (state.project === 'ALL') return DATA.grand;
   const p = DATA.projects.find(x=>x.nombre===state.project);
-  return { total:p.total, available:p.disponibles, reserved:p.apartados, sold:p.vendidos, sold_with_data:p.vendidos_con_ingreso, sold_no_data:p.vendidos_sin_ingreso, income:p.ingresos };
+  return { total:p.total, available:p.disponibles, reserved:p.apartados, sold:p.vendidos,
+           sold_with_data:p.vendidos_con_ingreso, sold_no_data:p.vendidos_sin_ingreso, income:p.ingresos,
+           m2_total:p.m2_total||0, m2_available:p.m2_disponible||0, m2_sold:p.m2_vendido||0,
+           lots_with_m2:p.lotes_con_m2||0, price_per_m2:(DATA.grand.price_per_m2||0) };
 }
 function renderKpis(){
   const g = currentGrand();
@@ -375,6 +394,30 @@ function renderKpis(){
   document.getElementById('kpiSold').textContent = fmtInt(g.sold);
   document.getElementById('kpiIncome').innerHTML = fmtMoneyCompact(g.income) + ' <small>' + fmtMoney(g.income) + '</small>';
   document.getElementById('kpiAlert').textContent = fmtInt(g.sold_no_data);
+  renderKpisM2(g);
+}
+
+// Los m2 solo se capturaban al vender un lote, asi que la cobertura es parcial.
+// Nunca se muestra un total de superficie sin decir sobre cuantos lotes se calculo.
+function renderKpisM2(g){
+  const disp = g.m2_available || 0, vend = g.m2_sold || 0;
+  const con = g.lots_with_m2 || 0, tot = g.total || 0;
+  const precio = g.price_per_m2 || 0;
+  const pct = tot ? Math.round(100 * con / tot) : 0;
+
+  document.getElementById('kpiM2Disp').textContent = fmtInt(Math.round(disp)) + ' m²';
+  document.getElementById('kpiM2Vend').textContent = fmtInt(Math.round(vend)) + ' m²';
+  document.getElementById('kpiM2Cov').textContent =
+    con ? `sobre ${fmtInt(con)} de ${fmtInt(tot)} lotes con superficie (${pct}%)`
+        : 'sin superficies capturadas';
+  document.getElementById('kpiM2VendSub').textContent =
+    pct < 100 ? `faltan ${fmtInt(tot - con)} lotes por medir` : 'cobertura completa';
+
+  const valor = disp * precio;
+  document.getElementById('kpiValor').textContent = precio ? fmtMoneyCompact(valor) : '–';
+  document.getElementById('kpiValorSub').textContent = precio
+    ? `${fmtMoney(precio)}/m² promedio` + (pct < 100 ? ' · estimado a la baja: faltan m² por capturar' : '')
+    : 'falta capturar superficies para estimarlo';
 }
 
 // ---------- charts (plain HTML/CSS bars) ----------
@@ -473,6 +516,8 @@ function renderSummaryTable(){
       <td class="num">${fmtInt(p.vendidos)}</td>
       <td class="num">${fmtInt(p.vendidos_con_ingreso)}</td>
       <td class="num">${fmtInt(p.vendidos_sin_ingreso)}</td>
+      <td class="num">${p.m2_disponible ? fmtInt(Math.round(p.m2_disponible)) : '—'}</td>
+      <td class="num">${p.m2_vendido ? fmtInt(Math.round(p.m2_vendido)) : '—'}</td>
       <td class="num">${fmtMoney(p.ingresos)}</td>
     `;
     tr.style.cursor='pointer';
@@ -545,6 +590,7 @@ function renderDetailTable(){
         <td>${esc(r.mza)}</td>
         <td>${esc(r.lote)}</td>
         <td>${r.cliente ? esc(r.cliente) : (r.nota ? '<span class="cat-tag">'+esc(r.nota)+'</span>' : '—')}</td>
+        <td class="num">${r.m2 ? fmtInt(Math.round(r.m2)) : '—'}</td>
         <td>${statusBadge(r.estatus, r.nota)}</td>
         <td class="num">${r.monto!=null ? fmtMoney(r.monto) : '—'}</td>
         <td class="num">${r.enganche!=null ? fmtMoney(r.enganche) : '—'}</td>

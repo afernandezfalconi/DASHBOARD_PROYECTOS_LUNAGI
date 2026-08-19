@@ -11,6 +11,21 @@ echo   Leyendo AUDITORIA_LOTES.xlsx y regenerando el dashboard...
 echo ============================================================
 echo.
 
+echo   *** OJO ***
+echo   La fuente de verdad hoy es el GOOGLE SHEET, no la copia local.
+echo   Para publicar usa el Sheet:  menu Dashboard -^> Publicar ahora
+echo.
+echo   Seguir por aqui PISA lo que publicaste desde el Sheet con la
+echo   copia local, que puede estar vieja. Es solo un respaldo.
+echo.
+choice /C SN /N /M "   Continuar de todos modos? (S/N): "
+if errorlevel 2 (
+  echo.
+  echo   Cancelado. No se toco nada.
+  exit /b 0
+)
+echo.
+
 python scripts\auditar.py --silencio
 if errorlevel 1 (
   echo.

@@ -283,6 +283,8 @@ def desde_maestro(ruta, diag):
         sys.exit("No encuentro el encabezado (fila con PROYECTO) en la hoja LOTES")
     cab = [norm(c) for c in filas[ic]]
     idx = {c: cab.index(c) for c in COLS_MAESTRO if c in cab}
+    if "M2" in cab:
+        idx["M2"] = cab.index("M2")      # opcional
     faltan = [c for c in COLS_MAESTRO if c not in idx]
     if faltan:
         sys.exit("Al maestro le faltan columnas: %s" % ", ".join(faltan))
@@ -318,6 +320,10 @@ def desde_maestro(ruta, diag):
         }
         if est == "vendido_sin_dato":
             reg["categoria"] = texto(v("CATEGORIA")) or "Cliente sin dato capturado"
+        if "M2" in idx:
+            sup = num(v("M2"))
+            if sup:
+                reg["m2"] = r2(sup)
         if texto(v("NOTA")):
             reg["nota"] = texto(v("NOTA"))
 
@@ -330,6 +336,17 @@ def desde_maestro(ruta, diag):
                 % (len(orden), sum(len(v) for v in porp.values()),
                    ", %d filas omitidas" % saltadas if saltadas else ""))
     return [{"nombre": n, "lotes": porp[n]} for n in orden]
+
+
+def precio_por_m2(proyectos):
+    """Promedio $/m2 usando solo lotes vendidos que traigan monto y superficie."""
+    dinero = metros = 0.0
+    for p in proyectos:
+        for l in p["lotes"]:
+            if l.get("m2") and l.get("monto") and l["estatus"] == "vendido":
+                dinero += l["monto"]
+                metros += l["m2"]
+    return r2(dinero / metros) if metros else 0
 
 
 def agregar(proyectos):
@@ -351,6 +368,11 @@ def agregar(proyectos):
             "vendidos_con_ingreso": sum(1 for l in lotes if l["estatus"] == "vendido"),
             "vendidos_sin_ingreso": sum(1 for l in lotes if l["estatus"] == "vendido_sin_dato"),
             "ingresos": r2(sum(l["ingreso"] for l in lotes)),
+            "m2_total": r2(sum(l.get("m2") or 0 for l in lotes)),
+            "m2_disponible": r2(sum(l.get("m2") or 0 for l in lotes if l["estatus"] == "disponible")),
+            "m2_vendido": r2(sum(l.get("m2") or 0 for l in lotes
+                                 if l["estatus"] in ("vendido", "vendido_sin_dato"))),
+            "lotes_con_m2": sum(1 for l in lotes if l.get("m2")),
             "lotes": lotes,
         })
     salida.sort(key=lambda p: -p["total"])
@@ -397,6 +419,11 @@ def main():
             "sold_with_data": sum(p["vendidos_con_ingreso"] for p in proyectos),
             "sold_no_data": sum(p["vendidos_sin_ingreso"] for p in proyectos),
             "income": r2(sum(p["ingresos"] for p in proyectos)),
+            "m2_total": r2(sum(p["m2_total"] for p in proyectos)),
+            "m2_available": r2(sum(p["m2_disponible"] for p in proyectos)),
+            "m2_sold": r2(sum(p["m2_vendido"] for p in proyectos)),
+            "lots_with_m2": sum(p["lotes_con_m2"] for p in proyectos),
+            "price_per_m2": precio_por_m2(proyectos),
         },
         "projects": proyectos,
         "alerts": alertas,
