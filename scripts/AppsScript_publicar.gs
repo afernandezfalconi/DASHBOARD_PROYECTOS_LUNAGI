@@ -192,12 +192,16 @@ function construirDatos() {
     let enganche = num(f[col.ENGANCHE]);
     let ingreso = num(f[col.INGRESO]);
 
-    // Un lote sin comprador no puede tener dinero cobrado ni precio pactado:
-    // si la venta se cancelo, ese anticipo ya no es de este lote. Se fuerza a
-    // cero aqui, no solo en la hoja, para que ningun descuido lo cuele al total.
-    if (!cliente && (ingreso || monto || enganche)) {
-      reparos.push('Fila ' + (i + 1) + ': sin cliente pero con importes ($' +
-                   ingreso.toLocaleString('es-MX') + ') — se ponen en cero');
+    // Un lote DISPONIBLE no puede arrastrar dinero: si la venta se cancelo, ese
+    // anticipo ya no le pertenece. Se fuerza a cero aqui, no solo en la hoja,
+    // para que ningun descuido lo cuele al total.
+    //
+    // Ojo: esto NO aplica a VENDIDO SIN DATO. Ahi el lote si se vendio y solo
+    // falta capturar al comprador, asi que su precio es informacion valida.
+    if (est === 'disponible' && (ingreso || monto || enganche)) {
+      reparos.push('Fila ' + (i + 1) + ': disponible pero con importes' +
+                   (ingreso ? ' ($' + ingreso.toLocaleString('es-MX') + ' de ingreso)' : '') +
+                   ' — se ponen en cero');
       monto = 0; enganche = 0; ingreso = 0;
     }
 
@@ -222,9 +226,14 @@ function construirDatos() {
         ? 'Pago de comisión a asesor'
         : (texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado');
     }
-    if (!cliente && (est === 'vendido' || est === 'vendido_sin_dato')) {
-      reparos.push('Fila ' + (i + 1) + ': marcado ' + texto(f[col.ESTATUS]) +
-                   ' sin comprador — usa "Corregir vendidos sin comprador"');
+    // Solo se avisa de VENDIDO a secas: una venta cerrada deberia tener nombre.
+    // VENDIDO SIN DATO sin nombre NO es contradiccion, es lo que ese estatus
+    // significa: el lote se vendio y el comprador no se capturo. Sigue fuera
+    // del inventario disponible, como debe ser.
+    if (!cliente && est === 'vendido') {
+      reparos.push('Fila ' + (i + 1) + ': marcado VENDIDO sin comprador — si la ' +
+                   'venta se cayó usa "Corregir vendidos sin comprador"; si se ' +
+                   'vendió y falta el nombre, ponlo en VENDIDO SIN DATO');
     }
     if (texto(f[col.NOTA])) reg.nota = texto(f[col.NOTA]);
 
@@ -331,8 +340,8 @@ function avisosDeCoherencia(proyectos) {
       if (l.estatus === 'disponible' && l.cliente && !l.nota) {
         avisos.push('Disponible pero con cliente: ' + donde + ' — ' + l.cliente);
       }
-      if ((l.estatus === 'vendido' || l.estatus === 'vendido_sin_dato') && !l.cliente) {
-        avisos.push('Vendido sin comprador: ' + donde);
+      if (l.estatus === 'vendido' && !l.cliente) {
+        avisos.push('Vendido sin comprador: ' + donde);   // VENDIDO SIN DATO no cuenta: ahi es normal
       }
       if (l.estatus === 'disponible' && l.ingreso) {
         avisos.push('Disponible pero con ingreso: ' + donde +
@@ -864,8 +873,10 @@ function corregirVendidosSinComprador() {
   const cambios = [], conDinero = [];
   for (let i = iCab + 1; i < filas.length; i++) {
     if (!texto(filas[i][0]) || !texto(filas[i][2])) continue;
-    const est = norm(filas[i][jEst]);
-    if (est !== 'VENDIDO' && est !== 'VENDIDO SIN DATO') continue;
+    // Solo VENDIDO a secas. VENDIDO SIN DATO sin nombre es valido y deliberado:
+    // el lote se vendio y el comprador no se capturo, asi que NO vuelve a
+    // inventario. Devolverlo seria poner a la venta un lote ya vendido.
+    if (norm(filas[i][jEst]) !== 'VENDIDO') continue;
     if (texto(filas[i][jCli])) continue;
     const ing = jIng >= 0 ? num(filas[i][jIng]) : 0;
     const c = { fila: i + 1, proyecto: texto(filas[i][0]),

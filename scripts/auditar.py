@@ -322,10 +322,10 @@ def desde_maestro(ruta, diag):
         monto, enganche = num(v("MONTO")), num(v("ENGANCHE"))
         ingreso = num(v("INGRESO"))
 
-        # Sin comprador no hay dinero: si la venta se cancelo, ese anticipo ya no
-        # pertenece a este lote. Se fuerza a cero aqui tambien, para que la regla
-        # no dependa de que la hoja este bien capturada.
-        if not cliente and (ingreso or monto or enganche):
+        # Un lote DISPONIBLE no puede arrastrar dinero: si la venta se cancelo,
+        # ese anticipo ya no le pertenece. No aplica a VENDIDO SIN DATO, donde el
+        # lote si se vendio y solo falta capturar al comprador.
+        if est == "disponible" and (ingreso or monto or enganche):
             diag.append("   !! %s mza %s lote %s: sin cliente pero con importes; no se suman"
                         % (proyecto, texto(v("MANZANA")), lote))
             monto = enganche = ingreso = 0.0
