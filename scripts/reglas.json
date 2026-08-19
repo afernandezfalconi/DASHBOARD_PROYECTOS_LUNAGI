@@ -256,5 +256,9 @@
       "CAMBIO DE FRACCIONAMIENTO",
       "CAMBIO DE FRACCIONAMIENTOS"
     ]
+  },
+  "homologacion_clientes": {
+    "_ayuda": "Equivalencias de nombre forzadas a mano. Se usan cuando la equivalencia no se puede deducir sola porque casi todos sus lotes estan afectados. HECTOR es la inmobiliaria del socio Hector, homologada como LUNAMAR.",
+    "HECTOR": "LUNAMAR"
   }
 }
