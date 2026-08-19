@@ -402,22 +402,31 @@ function traerMetrosCuadrados() {
 function ubicarColumna(hoja, filaCab, cab, encabezado, despuesDe, ancho) {
   const destino = cab.indexOf(despuesDe) + 1;      // justo despues de esa columna
   let j = cab.indexOf(encabezado);
+  const nueva = j < 0;
 
-  if (j < 0) {
+  if (nueva) {
     hoja.insertColumnBefore(destino + 1);
     j = destino;
   } else if (j !== destino) {
     const col = hoja.getRange(1, j + 1, hoja.getMaxRows(), 1);
     hoja.moveColumns(col, j + 1 > destino + 1 ? destino + 1 : destino + 2);
     j = destino;
-  } else {
-    return j;                                      // ya estaba en su lugar
   }
 
-  hoja.getRange(filaCab, j + 1).setValue(encabezado)
+  // Al insertar, Sheets copia formato Y VALIDACION de la columna vecina. Si el
+  // hueco cae junto a ESTATUS, la columna nueva hereda su lista desplegable.
+  // Se limpia siempre, no solo al crearla, para arreglar hojas ya afectadas.
+  const datos = hoja.getRange(filaCab + 1, j + 1, Math.max(1, hoja.getMaxRows() - filaCab), 1);
+  datos.setDataValidation(null);
+  datos.setBackground(null).setFontColor(null).setFontWeight('normal');
+
+  if (nueva || j !== destino) {
+    hoja.getRange(filaCab, j + 1).setValue(encabezado);
+    hoja.setColumnWidth(j + 1, ancho);
+  }
+  hoja.getRange(filaCab, j + 1)
       .setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF')
       .setHorizontalAlignment('center');
-  hoja.setColumnWidth(j + 1, ancho);
   return j;
 }
 
