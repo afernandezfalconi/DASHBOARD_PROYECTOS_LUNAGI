@@ -138,6 +138,11 @@
   .bar-row .seg.disp { background: var(--series-1); border-radius: 0 4px 4px 0; }
   .bar-row .seg.sold { background: var(--series-3); border-radius: 4px 0 0 4px; }
   .bar-row .seg.apart { background: var(--status-warning); }
+  .bar-row .seg.m2v { background: var(--series-3); border-radius: 4px 0 0 4px; }
+  .bar-row .seg.m2d { background: var(--series-1); border-radius: 0 4px 4px 0; }
+  .bar-row.sindato .track { background: repeating-linear-gradient(45deg,
+      var(--surface-2, rgba(127,127,127,.10)) 0 6px, transparent 6px 12px); }
+  .bar-row .valtxt.tenue { color: var(--text-secondary); font-style: italic; }
   .bar-row.income .seg.income { background: var(--series-1); border-radius: 0 4px 4px 0; }
   .bar-row .valtxt { font-size: 11px; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space:nowrap; }
   .bar-row.dim { opacity: 0.32; }
@@ -247,6 +252,29 @@
       </div>
       <div id="chartIncome"></div>
       <figcaption class="foot">Mismos datos en la tabla “Resumen por proyecto” ↓</figcaption>
+    </figure>
+  </div>
+
+  <div class="grid-2">
+    <figure class="card">
+      <div class="card-title">Superficie por proyecto: disponible vs. vendida</div>
+      <div class="card-sub">En m² · los proyectos rayados no tienen superficies capturadas · clic para filtrar</div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--series-1)"></span>m² disponibles</span>
+        <span class="item"><span class="swatch" style="background:var(--series-3)"></span>m² vendidos</span>
+      </div>
+      <div id="chartM2"></div>
+      <figcaption class="foot">Mismos datos en las columnas “m² disp.” y “m² vend.” de la tabla ↓</figcaption>
+    </figure>
+
+    <figure class="card">
+      <div class="card-title">Valor estimado del inventario disponible</div>
+      <div class="card-sub">m² disponibles × precio promedio por m² · estimación a la baja donde falten superficies</div>
+      <div class="legend">
+        <span class="item"><span class="swatch" style="background:var(--status-warning)"></span>Valor potencial ($)</span>
+      </div>
+      <div id="chartValor"></div>
+      <figcaption class="foot">Solo cuenta lo que tiene superficie capturada</figcaption>
     </figure>
   </div>
 
@@ -464,6 +492,68 @@ function renderChartLots(){
   });
 }
 
+// Superficie por proyecto. Los proyectos sin m2 capturados salen rayados y
+// con la leyenda "sin capturar", para no leerlos como si tuvieran cero.
+function renderChartM2(){
+  const el = document.getElementById('chartM2');
+  if (!el) return;
+  el.innerHTML = '';
+  const projects = DATA.projects.slice()
+    .sort((a,b)=> ((b.m2_disponible||0)+(b.m2_vendido||0)) - ((a.m2_disponible||0)+(a.m2_vendido||0)));
+  const max = Math.max(1, ...projects.map(p=>(p.m2_disponible||0)+(p.m2_vendido||0)));
+  projects.forEach(p=>{
+    const disp = p.m2_disponible||0, vend = p.m2_vendido||0, tot = disp+vend;
+    const row = document.createElement('div');
+    row.className = 'bar-row' + (tot ? '' : ' sindato');
+    if (state.project !== 'ALL') row.classList.add(state.project === p.nombre ? 'hi' : 'dim');
+    const cob = p.total ? Math.round(100*(p.lotes_con_m2||0)/p.total) : 0;
+    row.innerHTML = `
+      <div class="rlabel">${esc(p.nombre)}</div>
+      <div class="track">
+        <div class="seg m2v" style="left:0; width:${(vend/max)*100}%;"></div>
+        <div class="seg m2d" style="left:${(vend/max)*100}%; width:${(disp/max)*100}%;"></div>
+      </div>
+      <div class="valtxt${tot ? '' : ' tenue'}">${tot ? fmtInt(Math.round(tot)) : 'sin capturar'}</div>
+    `;
+    row.addEventListener('click', ()=>{ projSel.value = p.nombre; state.project = p.nombre; renderAll(); });
+    row.addEventListener('pointermove', (e)=> showTip(e,
+      `<b>${esc(p.nombre)}</b><br>m² disponibles: <b>${fmtInt(Math.round(disp))}</b>` +
+      `<br>m² vendidos: <b>${fmtInt(Math.round(vend))}</b>` +
+      `<br>Superficie capturada en ${fmtInt(p.lotes_con_m2||0)} de ${fmtInt(p.total)} lotes (${cob}%)`));
+    row.addEventListener('pointerleave', hideTip);
+    el.appendChild(row);
+  });
+}
+
+function renderChartValor(){
+  const el = document.getElementById('chartValor');
+  if (!el) return;
+  el.innerHTML = '';
+  const precio = DATA.grand.price_per_m2 || 0;
+  const projects = DATA.projects.slice()
+    .map(p=>({p, valor:(p.m2_disponible||0)*precio}))
+    .sort((a,b)=>b.valor-a.valor);
+  const max = Math.max(1, ...projects.map(x=>x.valor));
+  projects.forEach(({p, valor})=>{
+    const row = document.createElement('div');
+    row.className = 'bar-row income' + (valor ? '' : ' sindato');
+    if (state.project !== 'ALL') row.classList.add(state.project === p.nombre ? 'hi' : 'dim');
+    const cob = p.total ? Math.round(100*(p.lotes_con_m2||0)/p.total) : 0;
+    row.innerHTML = `
+      <div class="rlabel">${esc(p.nombre)}</div>
+      <div class="track"><div class="seg apart" style="left:0; width:${(valor/max)*100}%;"></div></div>
+      <div class="valtxt${valor ? '' : ' tenue'}">${valor ? fmtMoneyCompact(valor) : '—'}</div>
+    `;
+    row.addEventListener('click', ()=>{ projSel.value = p.nombre; state.project = p.nombre; renderAll(); });
+    row.addEventListener('pointermove', (e)=> showTip(e,
+      `<b>${esc(p.nombre)}</b><br>${fmtInt(Math.round(p.m2_disponible||0))} m² disponibles` +
+      `<br>× ${fmtMoney(precio)}/m² = <b>${fmtMoney(valor)}</b>` +
+      (cob < 100 ? `<br><i>Solo el ${cob}% de sus lotes tiene superficie: el valor real es mayor</i>` : '')));
+    row.addEventListener('pointerleave', hideTip);
+    el.appendChild(row);
+  });
+}
+
 function renderChartIncome(){
   const el = document.getElementById('chartIncome');
   el.innerHTML = '';
@@ -627,6 +717,8 @@ function renderAll(){
   renderKpis();
   renderChartLots();
   renderChartIncome();
+  renderChartM2();
+  renderChartValor();
   renderSummaryTable();
   renderAlertsTable();
   renderDetailTable();
