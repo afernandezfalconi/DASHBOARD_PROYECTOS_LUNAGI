@@ -46,10 +46,15 @@ def aprender_homologacion(reglas, afectados):
     PG INMOBILIARIA...). Las bases siguen crudas. Si al corregir un lote
     cancelado copiaramos el nombre de la base, desharíamos ese trabajo.
 
-    CUIDADO con el sesgo: en los lotes AFECTADOS el Sheet trae el nombre del
-    comprador cancelado, asi que compararlos daria "NORMA -> MUSS", que no es
-    una homologacion sino justo el error a corregir. Por eso se aprende solo de
-    los lotes sanos, que se reciben en `afectados` para excluirlos.
+    CUIDADO con el sesgo: si el Sheet trae el nombre del comprador CANCELADO,
+    compararlo daria "NORMA -> MUSS", que no es una homologacion sino el error a
+    corregir. Se descarta solo ese caso.
+
+    No basta con excluir todos los lotes afectados: nombres como ANDREI o HECTOR
+    tienen TODAS sus apariciones dentro de los afectados, y excluirlos en bloque
+    hacia imposible aprender "ANDREI -> PG INMOBILIARIA", que es una homologacion
+    perfectamente valida ya hecha en el Sheet. `afectados` mapea cada lote a su
+    nombre cancelado para poder distinguir un caso del otro.
     """
     ruta = os.path.join(RAIZ, "datos.json")
     if not os.path.exists(ruta):
@@ -76,12 +81,13 @@ def aprender_homologacion(reglas, afectados):
                 continue
             activas, _ = filas_por_bloque(wb[real], alias, cortes)
             for k, dat in activas.items():
-                if (p["nombre"], k[0], k[1]) in afectados:
-                    continue                      # ahi el Sheet trae el cancelado
                 crudo = dat["cliente"]
                 puesto = sheet.get((p["nombre"], k[0], k[1]))
                 if not crudo or not puesto or norm(crudo) == norm(puesto):
                     continue
+                cancelado = afectados.get((p["nombre"], k[0], k[1]))
+                if cancelado and norm(puesto) == norm(cancelado):
+                    continue          # el Sheet trae el cancelado: eso NO es homologacion
                 votos.setdefault(norm(crudo), {}).setdefault(puesto, 0)
                 votos[norm(crudo)][puesto] += 1
         wb.close()
@@ -178,7 +184,8 @@ def main():
 
     # La homologacion se aprende DESPUES de saber cuales son los afectados, para
     # no aprender el propio error como si fuera un cambio de nombre intencional.
-    afectados = {(c["proyecto"], c["manzana"], c["lote"]) for c in casos}
+    afectados = {(c["proyecto"], c["manzana"], c["lote"]): c["cliente_cancelado"]
+                 for c in casos}
     homol, dudosas = aprender_homologacion(reglas, afectados)
     for k, v in reglas.get("homologacion_clientes", {}).items():
         if not k.startswith("_"):
