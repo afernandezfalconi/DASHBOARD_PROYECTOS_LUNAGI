@@ -36,7 +36,11 @@ COL_TIPO = ("TIPO DE VENTA", "TIPO DE COMPRA", "STATUS", "TIPO")
 CREDITO, CONTADO, COMISION = "Crédito", "Contado", "Comisión"
 
 
-def clasificar(valor, mensualidades, enganche, precio):
+def clasificar(valor, mensualidades, enganche, precio, cobrado=0):
+    """Deduce el tipo de venta. Ojo con la columna STATUS de GUAYACAN: mezcla
+    TRES cosas distintas -tipo de venta, estado de pago y comisiones- asi que
+    hay valores que no son tipos de venta y hay que resolver por los importes.
+    """
     v = norm(valor)
     if not v or v in ("NA", "N/A", "-"):
         return ""
@@ -44,8 +48,17 @@ def clasificar(valor, mensualidades, enganche, precio):
         return CONTADO
     if v.startswith("CREDIT") or v.startswith("CRÉDIT"):
         return CREDITO
+
     if v.startswith("COMISION"):
-        return COMISION
+        # Un lote entregado a un asesor como pago de comision no tiene ningun
+        # movimiento. Si la fila SI trae dinero es una venta normal a la que
+        # alguien anoto lo de la comision: NATIVIDAD ORTEGA (GUAYACAN 3/23)
+        # liquido 50,000 en dos pagos y estaba quedando fuera del conteo de
+        # contado y credito por esta etiqueta.
+        if not (mensualidades or enganche or precio or cobrado):
+            return COMISION
+        return CREDITO if mensualidades > 1 else CONTADO
+
     if v.startswith("LIQUID"):                 # estado de pago, no tipo de venta
         if mensualidades > 1:
             return CREDITO

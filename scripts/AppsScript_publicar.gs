@@ -331,6 +331,10 @@ function avisosDeCoherencia(proyectos) {
         avisos.push('Disponible pero con ingreso: ' + donde +
                     ' — $' + l.ingreso.toLocaleString('es-MX'));
       }
+      if (norm(l.tipo) === 'COMISION' && l.ingreso) {
+        avisos.push('Comisión pero con ingreso: ' + donde + ' — $' +
+                    l.ingreso.toLocaleString('es-MX') + ' (¿es una venta normal?)');
+      }
       if (esSocio(l.cliente) && l.estatus !== 'apartado') {
         avisos.push('Socio sin marcar APARTADO: ' + donde + ' — ' + l.cliente);
       }
