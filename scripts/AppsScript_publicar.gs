@@ -384,11 +384,41 @@ function normalizarApartadosDeSocios() {
  * Solo escribe donde la celda esta vacia: nunca pisa un m2 capturado a mano.
  */
 function traerTipoDeVenta() {
-  traerColumna('tipo_venta.json', 'TIPO VENTA', 'Tipo de venta', 140);
+  traerColumna('tipo_venta.json', 'TIPO VENTA', 'Tipo de venta', 130, 'CLIENTE');
 }
 
 function traerMetrosCuadrados() {
-  traerColumna('m2.json', 'M2', 'Superficies', 90);
+  traerColumna('m2.json', 'M2', 'Superficies', 90, 'LOTE');
+}
+
+/**
+ * Deja la columna en su sitio y devuelve su indice (0-based).
+ *
+ * Se usa insertColumnBefore / moveColumns y no un simple setValue al final
+ * porque la hoja RESUMEN apunta a LOTES por letra de columna: al insertar de
+ * esta forma, Google Sheets reajusta esas formulas solo. Escribir el
+ * encabezado a mano las dejaria apuntando a la columna equivocada.
+ */
+function ubicarColumna(hoja, filaCab, cab, encabezado, despuesDe, ancho) {
+  const destino = cab.indexOf(despuesDe) + 1;      // justo despues de esa columna
+  let j = cab.indexOf(encabezado);
+
+  if (j < 0) {
+    hoja.insertColumnBefore(destino + 1);
+    j = destino;
+  } else if (j !== destino) {
+    const col = hoja.getRange(1, j + 1, hoja.getMaxRows(), 1);
+    hoja.moveColumns(col, j + 1 > destino + 1 ? destino + 1 : destino + 2);
+    j = destino;
+  } else {
+    return j;                                      // ya estaba en su lugar
+  }
+
+  hoja.getRange(filaCab, j + 1).setValue(encabezado)
+      .setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF')
+      .setHorizontalAlignment('center');
+  hoja.setColumnWidth(j + 1, ancho);
+  return j;
 }
 
 /**
@@ -398,7 +428,7 @@ function traerMetrosCuadrados() {
  *
  * Solo escribe donde la celda esta vacia: nunca pisa un dato ya capturado.
  */
-function traerColumna(archivo, encabezado, titulo, ancho) {
+function traerColumna(archivo, encabezado, titulo, ancho, despuesDe) {
   const ui = SpreadsheetApp.getUi();
   const token = PropertiesService.getScriptProperties().getProperty('GITHUB_TOKEN');
   if (!token) { ui.alert('Falta el token', 'Usa: Dashboard > Configurar token', ui.ButtonSet.OK); return; }
@@ -408,7 +438,7 @@ function traerColumna(archivo, encabezado, titulo, ancho) {
   catch (e) { ui.alert('No pude leer ' + archivo, String(e.message), ui.ButtonSet.OK); return; }
 
   const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
-  const filas = hoja.getDataRange().getValues();
+  let filas = hoja.getDataRange().getValues();
 
   let iCab = -1;
   for (let i = 0; i < Math.min(filas.length, 10); i++) {
@@ -416,27 +446,24 @@ function traerColumna(archivo, encabezado, titulo, ancho) {
   }
   if (iCab < 0) { ui.alert('No encuentro el encabezado'); return; }
 
+  const jCol = ubicarColumna(hoja, iCab + 1, filas[iCab].map(norm),
+                             encabezado, despuesDe, ancho);
+
+  filas = hoja.getDataRange().getValues();   // releer: las columnas se movieron
   const cab = filas[iCab].map(norm);
-  let jCol = cab.indexOf(encabezado);
-  if (jCol < 0) {                       // la columna no existe todavia: se crea
-    jCol = filas[iCab].length;
-    hoja.getRange(iCab + 1, jCol + 1).setValue(encabezado)
-        .setFontWeight('bold').setBackground('#1F4E79').setFontColor('#FFFFFF')
-        .setHorizontalAlignment('center');
-    hoja.setColumnWidth(jCol + 1, ancho);
-  }
+  const jProy = cab.indexOf('PROYECTO'), jMza = cab.indexOf('MANZANA'), jLote = cab.indexOf('LOTE');
 
   let puestos = 0, yaTenian = 0, sinDato = 0;
   const faltantes = {}, escribir = [];
 
   for (let i = iCab + 1; i < filas.length; i++) {
-    const proyecto = texto(filas[i][0]);
-    const lote = texto(filas[i][2]);
+    const proyecto = texto(filas[i][jProy]);
+    const lote = texto(filas[i][jLote]);
     if (!proyecto || !lote) continue;
 
     if (jCol < filas[i].length && texto(filas[i][jCol])) { yaTenian++; continue; }
 
-    const v = (mapa[proyecto] || {})[texto(filas[i][1]) + '|' + lote];
+    const v = (mapa[proyecto] || {})[texto(filas[i][jMza]) + '|' + lote];
     if (v) { escribir.push([i + 1, v]); puestos++; }
     else { sinDato++; faltantes[proyecto] = (faltantes[proyecto] || 0) + 1; }
   }

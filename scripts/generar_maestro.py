@@ -25,8 +25,10 @@ from marcar_duplicados import agrupar_parecidos
 AQUI = os.path.dirname(os.path.abspath(__file__))
 RAIZ = os.path.dirname(AQUI)
 
-CAB = auditar.COLS_MAESTRO
-ANCHOS = [24, 11, 10, 44, 19, 15, 15, 15, 27, 34]
+# orden visible de la hoja LOTES (M2 y TIPO VENTA se llenan luego desde las bases)
+CAB = ["PROYECTO", "MANZANA", "LOTE", "M2", "CLIENTE", "TIPO VENTA", "ESTATUS",
+       "MONTO", "ENGANCHE", "INGRESO", "CATEGORIA", "NOTA"]
+ANCHOS = [24, 11, 10, 9, 44, 13, 19, 15, 15, 15, 27, 34]
 
 AZUL = "1F4E79"
 AMARILLO = "FFFF00"
@@ -101,9 +103,9 @@ def hoja_resumen(wb, proyectos, ultima_fila):
     for j in range(2, 8):
         ws.column_dimensions[get_column_letter(j)].width = 15
 
-    R = "LOTES!$A$2:$A$%d" % ultima_fila
-    E = "LOTES!$E$2:$E$%d" % ultima_fila
-    I = "LOTES!$H$2:$H$%d" % ultima_fila
+    R = "LOTES!$A$2:$A$%d" % ultima_fila      # PROYECTO
+    E = "LOTES!$G$2:$G$%d" % ultima_fila      # ESTATUS
+    I = "LOTES!$J$2:$J$%d" % ultima_fila      # INGRESO
     for i, p in enumerate(proyectos, 2):
         ws.cell(row=i, column=1, value=p["nombre"])
         a = "$A%d" % i
@@ -177,18 +179,18 @@ def main():
     for p in proyectos:
         for l in p["lotes"]:
             et = auditar.ESTATUS_A_TEXTO[l["estatus"]]
-            vals = [p["nombre"], l["mza"], l["lote"], l["cliente"], et,
-                    l["monto"], l["enganche"], l["ingreso"],
+            vals = [p["nombre"], l["mza"], l["lote"], l.get("m2", ""), l["cliente"],
+                    l.get("tipo", ""), et, l["monto"], l["enganche"], l["ingreso"],
                     l.get("categoria", ""), l.get("nota", "")]
             for j, v in enumerate(vals, 1):
                 c = ws.cell(row=fila, column=j, value=v)
                 c.border = borde
-                if j in (6, 7, 8):
+                if j in (8, 9, 10):
                     c.number_format = '#,##0.00'
-                if j == 5:
+                if j == 7:
                     c.fill = PatternFill("solid", fgColor=COLOR_ESTATUS[et])
                     c.alignment = Alignment(horizontal="center")
-                if j == 4 and l["cliente"] and (p["nombre"], auditar.norm(l["cliente"])) in sospechosos:
+                if j == 5 and l["cliente"] and (p["nombre"], auditar.norm(l["cliente"])) in sospechosos:
                     c.fill = PatternFill("solid", fgColor=AMARILLO)
             fila += 1
 
@@ -202,12 +204,12 @@ def main():
     dv.error = "Usa uno de la lista: DISPONIBLE, APARTADO, VENDIDO, VENDIDO SIN DATO"
     dv.errorTitle = "Estatus no valido"
     ws.add_data_validation(dv)
-    dv.add("E2:E%d" % (ultima + 400))
+    dv.add("G2:G%d" % (ultima + 400))
 
     dvc = DataValidation(type="list", allow_blank=True,
                          formula1='"%s"' % ",".join(CATEGORIAS), showErrorMessage=False)
     ws.add_data_validation(dvc)
-    dvc.add("I2:I%d" % (ultima + 400))
+    dvc.add("K2:K%d" % (ultima + 400))
 
     hoja_resumen(wb, proyectos, ultima)
     wb.save(destino)
