@@ -209,7 +209,12 @@ function construirDatos() {
     const tipo = col.TIPO >= 0 ? texto(f[col.TIPO]) : '';
     if (tipo) reg.tipo = tipo;
     if (est === 'vendido_sin_dato') {
-      reg.categoria = texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado';
+      // Un lote entregado a un asesor como pago de comision NO es un hueco de
+      // captura: la operacion esta cerrada y nunca hubo cobro. Se le da su
+      // propia categoria para que no ensucie la lista de pendientes por revisar.
+      reg.categoria = (norm(tipo) === 'COMISION')
+        ? 'Pago de comisión a asesor'
+        : (texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado');
     }
     if (!cliente && (est === 'vendido' || est === 'vendido_sin_dato')) {
       problemas.push('Fila ' + (i + 1) + ': marcado ' + texto(f[col.ESTATUS]) +

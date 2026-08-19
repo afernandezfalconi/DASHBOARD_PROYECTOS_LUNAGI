@@ -247,7 +247,19 @@
         ]
       }
     ],
-    "categoria_por_defecto": "Cliente sin dato capturado"
+    "categoria_por_defecto": "Cliente sin dato capturado",
+    "categoria_por_tipo": {
+      "_ayuda": "Si el TIPO VENTA es alguno de estos, la categoria se asigna sola y gana sobre la deducida por el nombre del cliente.",
+      "COMISION": "Pago de comisión a asesor"
+    },
+    "_categorias_validas": [
+      "Inmobiliaria socia",
+      "Administracion Cristhian",
+      "Uso interno / comunal",
+      "Anotacion sin cliente",
+      "Pago de comisión a asesor",
+      "Cliente sin dato capturado"
+    ]
   },
   "marcadores_de_corte": {
     "_ayuda": "Fila divisoria: TODO lo que sigue en la hoja se ignora (ventas canceladas o que se mudaron de fraccionamiento). OJO: 'CANCELADO' en SINGULAR no va aqui, porque es la etiqueta de una fila suelta, no un divisor. En GUIDXILAYU PG hay 9 filas asi repartidas entre lotes validos: tratarla como divisor borraria 94 lotes.",

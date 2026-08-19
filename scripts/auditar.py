@@ -337,7 +337,11 @@ def desde_maestro(ruta, diag):
             "ingreso": r2(ingreso),
         }
         if est == "vendido_sin_dato":
-            reg["categoria"] = texto(v("CATEGORIA")) or "Cliente sin dato capturado"
+            # misma regla que el Apps Script: comision no es hueco de captura
+            if norm(reg.get("tipo")) == "COMISION":
+                reg["categoria"] = "Pago de comisión a asesor"
+            else:
+                reg["categoria"] = texto(v("CATEGORIA")) or "Cliente sin dato capturado"
         if "M2" in idx:
             sup = num(v("M2"))
             if sup:
