@@ -1,5 +1,10 @@
-# Las bases .xlsx NO van al repo (son publicas y traen datos de clientes)
+# Las bases .xlsx NO van al repo (es publico y traen datos de clientes)
 *.xlsx
 ~$*
+
+# Informes con nombres de compradores: tampoco
+revisar_cancelados.csv
+correcciones.json
+
 __pycache__/
 *.pyc

@@ -60,6 +60,7 @@ def main():
     carpeta = os.path.normpath(os.path.join(RAIZ, reglas["carpeta_bases"]))
     alias = reglas["columnas"]
 
+    cortes = reglas.get("marcadores_de_corte", {}).get("textos", ["CANCELADOS"])
     salida, resumen = {}, []
     for p in reglas["proyectos"]:
         ruta = auditar.buscar_archivo(carpeta, p["archivo"])
@@ -86,6 +87,8 @@ def main():
             columna = norm(cab[jt])
 
             for f in filas[ic + 1:]:
+                if auditar.es_marcador_de_corte(f, cortes):
+                    break                 # de aqui abajo esta cancelado
                 def v(j):
                     return f[j] if j is not None and j < len(f) else None
 

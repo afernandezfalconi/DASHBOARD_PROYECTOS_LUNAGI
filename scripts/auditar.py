@@ -96,11 +96,15 @@ def columnas_de_pago(cabecera, desde, excluir):
     return out
 
 
-def es_marcador_cancelados(fila):
-    for c in fila:
-        if norm(c) == "CANCELADOS":
-            return True
-    return False
+def es_marcador_de_corte(fila, textos):
+    """Fila divisoria: CANCELADOS o CAMBIO DE FRACCIONAMIENTO.
+
+    Todo lo que viene despues esta cancelado (o el cliente se llevo su dinero a
+    otro fraccionamiento). No es inventario activo ni ingreso historico: se
+    ignora por completo. La fila valida de ese lote es la de ARRIBA del corte.
+    """
+    objetivo = {norm(t) for t in textos}
+    return any(norm(c) in objetivo for c in fila)
 
 
 def clasificar_cliente(cliente, clasif):
@@ -146,12 +150,14 @@ def auditar_hoja(ws, reglas, diag):
     vacios = {norm(x) for x in reglas["cliente_vacio"]}
     prefijos = [norm(x) for x in reglas["cliente_vacio_prefijo"]]
 
-    lotes = {}          # (mza, lote) -> registro ; la ULTIMA fila gana
+    cortes = reglas.get("marcadores_de_corte", {}).get("textos", ["CANCELADOS"])
+
+    lotes = {}          # (mza, lote) -> registro
     for fila in filas[ic + 1:]:
         if not any(c is not None and str(c).strip() for c in fila):
             continue
-        if es_marcador_cancelados(fila):
-            continue                       # divisoria interna; el bloque 2 sigue y sobrescribe
+        if es_marcador_de_corte(fila, cortes):
+            break                          # de aqui para abajo esta cancelado
 
         def val(rol):
             j = mapa.get(rol)

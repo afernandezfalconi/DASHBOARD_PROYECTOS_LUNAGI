@@ -41,14 +41,21 @@ def cabecera_y_cols(filas):
     return None, None, None, None
 
 
-def leer(ws):
-    """Devuelve {(mza, lote): m2} de una hoja, si trae los datos."""
+def leer(ws, cortes):
+    """Devuelve {(mza, lote): m2} de una hoja, si trae los datos.
+
+    Se detiene en el marcador CANCELADOS / CAMBIO DE FRACCIONAMIENTO: de ahi
+    para abajo son ventas canceladas y su superficie no debe pisar la del
+    lote activo.
+    """
     filas = [list(f) for f in ws.iter_rows(values_only=True)]
     ic, jm, jl, j2 = cabecera_y_cols(filas)
     if ic is None or j2 is None:
         return {}
     out = {}
     for f in filas[ic + 1:]:
+        if auditar.es_marcador_de_corte(f, cortes):
+            break
         if jl >= len(f) or jm >= len(f):
             continue
         lote = texto(f[jl])
@@ -64,6 +71,7 @@ def main():
     reglas = json.load(open(os.path.join(AQUI, "reglas.json"), encoding="utf-8"))
     carpeta = os.path.normpath(os.path.join(RAIZ, reglas["carpeta_bases"]))
 
+    cortes = reglas.get("marcadores_de_corte", {}).get("textos", ["CANCELADOS"])
     salida, resumen = {}, []
     for p in reglas["proyectos"]:
         ruta = auditar.buscar_archivo(carpeta, p["archivo"])
@@ -75,7 +83,7 @@ def main():
         for nombre in p["hojas"]:                      # 1) hoja principal
             real = next((s for s in wb.sheetnames if norm(s) == norm(nombre)), None)
             if real:
-                d = leer(wb[real])
+                d = leer(wb[real], cortes)
                 if d:
                     datos.update(d)
                     fuente.append("hoja principal")
@@ -83,7 +91,7 @@ def main():
         if not datos:                                  # 2) pestana de precios
             for s in wb.sheetnames:
                 if any(norm(s).startswith(h) for h in HOJAS_PRECIO):
-                    d = leer(wb[s])
+                    d = leer(wb[s], cortes)
                     if d:
                         datos.update(d)
                         fuente.append("pestaña '%s'" % s.strip())

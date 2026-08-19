@@ -248,5 +248,13 @@
       }
     ],
     "categoria_por_defecto": "Cliente sin dato capturado"
+  },
+  "marcadores_de_corte": {
+    "_ayuda": "Fila divisoria: TODO lo que sigue en la hoja se ignora (ventas canceladas o que se mudaron de fraccionamiento). OJO: 'CANCELADO' en SINGULAR no va aqui, porque es la etiqueta de una fila suelta, no un divisor. En GUIDXILAYU PG hay 9 filas asi repartidas entre lotes validos: tratarla como divisor borraria 94 lotes.",
+    "textos": [
+      "CANCELADOS",
+      "CAMBIO DE FRACCIONAMIENTO",
+      "CAMBIO DE FRACCIONAMIENTOS"
+    ]
   }
 }
