@@ -56,6 +56,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Revisar lotes cancelados', 'revisarLotesCancelados')
     .addItem('Aplicar correcciones de cancelados', 'aplicarCorreccionesCancelados')
+    .addItem('Corregir vendidos sin comprador', 'corregirVendidosSinComprador')
     .addSeparator()
     .addItem('Abrir el dashboard', 'abrirDashboard')
     .addItem('Configurar token de GitHub', 'configurarToken')
@@ -301,6 +302,9 @@ function avisosDeCoherencia(proyectos) {
       if (l.estatus === 'disponible' && l.cliente && !l.nota) {
         avisos.push('Disponible pero con cliente: ' + donde + ' — ' + l.cliente);
       }
+      if ((l.estatus === 'vendido' || l.estatus === 'vendido_sin_dato') && !l.cliente) {
+        avisos.push('Vendido sin comprador: ' + donde);
+      }
       if (l.estatus === 'disponible' && l.ingreso) {
         avisos.push('Disponible pero con ingreso: ' + donde +
                     ' — $' + l.ingreso.toLocaleString('es-MX'));
@@ -530,7 +534,8 @@ function leerCorrecciones() {
   const cab = filas[0].map(norm);
   const col = {};
   ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE_CORRECTO', 'CLIENTE_CANCELADO',
-   'MONTO_CORRECTO', 'ENGANCHE_CORRECTO', 'INGRESO_CORRECTO'].forEach(function (c) {
+   'MONTO_CORRECTO', 'ENGANCHE_CORRECTO', 'INGRESO_CORRECTO',
+   'INGRESO_CANCELADO'].forEach(function (c) {
     const j = cab.indexOf(c);
     if (j < 0) throw new Error('A ' + HOJA_CORR + ' le falta la columna ' + c);
     col[c] = j;
@@ -545,7 +550,8 @@ function leerCorrecciones() {
         cancelado: texto(f[col.CLIENTE_CANCELADO]),
         monto: num(f[col.MONTO_CORRECTO]),
         enganche: num(f[col.ENGANCHE_CORRECTO]),
-        ingreso: num(f[col.INGRESO_CORRECTO])
+        ingreso: num(f[col.INGRESO_CORRECTO]),
+        cancelado_ing: num(f[col.INGRESO_CANCELADO])
       };
     });
 }
@@ -563,8 +569,8 @@ function cotejarCancelados() {
   if (iCab < 0) throw new Error('No encuentro el encabezado de ' + HOJA);
   const cab = filas[iCab].map(norm);
   const c = {};
-  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'MONTO', 'ENGANCHE', 'INGRESO',
-   'NOTA'].forEach(function (n) { c[n] = cab.indexOf(n); });
+  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'ESTATUS', 'MONTO', 'ENGANCHE',
+   'INGRESO', 'NOTA'].forEach(function (n) { c[n] = cab.indexOf(n); });
 
   const donde = {};
   for (let i = iCab + 1; i < filas.length; i++) {
@@ -598,7 +604,7 @@ function revisarLotesCancelados() {
   try { r = cotejarCancelados(); }
   catch (e) { ui.alert('No pude revisar', String(e.message), ui.ButtonSet.OK); return; }
 
-  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso; }, 0);
+  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso - x.cancelado_ing; }, 0);
   const lineas = [
     'Lotes que quedaron con los datos del comprador cancelado:', '',
     '  Por corregir      ' + r.porCorregir.length,
@@ -607,7 +613,7 @@ function revisarLotesCancelados() {
     '  Sin fila en LOTES ' + r.sinFila.length
   ];
   if (r.porCorregir.length) {
-    lineas.push('', 'Ingreso real que entraría: $' + dif.toLocaleString('es-MX'), '',
+    lineas.push('', 'Efecto NETO en ingresos: $' + dif.toLocaleString('es-MX'), '',
                 'Los 8 de mayor monto:');
     r.porCorregir.slice().sort(function (a, b) { return b.ingreso - a.ingreso; })
       .slice(0, 8).forEach(function (x) {
@@ -640,7 +646,7 @@ function aplicarCorreccionesCancelados() {
     return;
   }
 
-  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso; }, 0);
+  const dif = r.porCorregir.reduce(function (s, x) { return s + x.ingreso - x.cancelado_ing; }, 0);
   const ok = ui.alert('Aplicar correcciones',
     'Se van a corregir ' + r.porCorregir.length + ' lote(s): cliente, monto, ' +
     'enganche e ingreso pasan a los de la venta real.' + String.fromCharCode(10) +
@@ -661,12 +667,82 @@ function aplicarCorreccionesCancelados() {
     if (c.NOTA >= 0 && x.cancelado && !texto(x.notaActual)) {
       r.hoja.getRange(x.fila, c.NOTA + 1).setValue('Cancelado: ' + x.cancelado);
     }
+    // Si la venta se cancelo y nadie mas compro, el lote vuelve a inventario.
+    // Sin esto quedaba "VENDIDO" sin comprador, que no significa nada y se
+    // contaba como venta.
+    if (!x.correcto && c.ESTATUS >= 0) {
+      r.hoja.getRange(x.fila, c.ESTATUS + 1).setValue('DISPONIBLE');
+    }
   });
 
   ui.alert('Listo',
     r.porCorregir.length + ' lote(s) corregidos.' + String.fromCharCode(10) +
     String.fromCharCode(10) + 'Revisa el RESUMEN y publica cuando estés conforme.',
     ui.ButtonSet.OK);
+}
+
+/**
+ * Devuelve a inventario los lotes que quedaron marcados como vendidos pero sin
+ * ningun comprador. Un lote vendido a nadie no significa nada: o se cancelo la
+ * venta o falta capturar el nombre. Se cuentan como venta y esconden inventario
+ * que si se puede vender.
+ */
+function corregirVendidosSinComprador() {
+  const ui = SpreadsheetApp.getUi();
+  const hoja = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(HOJA);
+  const filas = hoja.getDataRange().getValues();
+
+  let iCab = -1;
+  for (let i = 0; i < Math.min(filas.length, 10); i++) {
+    if (norm(filas[i][0]) === 'PROYECTO') { iCab = i; break; }
+  }
+  if (iCab < 0) { ui.alert('No encuentro el encabezado'); return; }
+  const cab = filas[iCab].map(norm);
+  const jCli = cab.indexOf('CLIENTE'), jEst = cab.indexOf('ESTATUS'),
+        jIng = cab.indexOf('INGRESO');
+  if (jCli < 0 || jEst < 0) { ui.alert('Faltan columnas CLIENTE o ESTATUS'); return; }
+
+  const cambios = [], conDinero = [];
+  for (let i = iCab + 1; i < filas.length; i++) {
+    if (!texto(filas[i][0]) || !texto(filas[i][2])) continue;
+    const est = norm(filas[i][jEst]);
+    if (est !== 'VENDIDO' && est !== 'VENDIDO SIN DATO') continue;
+    if (texto(filas[i][jCli])) continue;
+    const ing = jIng >= 0 ? num(filas[i][jIng]) : 0;
+    const c = { fila: i + 1, proyecto: texto(filas[i][0]),
+                mza: texto(filas[i][1]), lote: texto(filas[i][2]), ingreso: ing };
+    (ing > 0 ? conDinero : cambios).push(c);
+  }
+
+  if (!cambios.length && !conDinero.length) {
+    ui.alert('Nada que corregir', 'No hay lotes vendidos sin comprador.', ui.ButtonSet.OK);
+    return;
+  }
+
+  const lineas = ['Lotes marcados como vendidos pero SIN comprador:', '',
+                  '  Pasan a DISPONIBLE   ' + cambios.length];
+  if (conDinero.length) {
+    lineas.push('  Con ingreso, NO se tocan  ' + conDinero.length);
+    lineas.push('', 'Esos traen dinero cobrado, así que falta el nombre del');
+    lineas.push('comprador, no es que se haya cancelado. Revísalos tú:');
+    conDinero.slice(0, 6).forEach(function (c) {
+      lineas.push('  ' + c.proyecto + ' ' + c.mza + '/' + c.lote +
+                  '  $' + c.ingreso.toLocaleString('es-MX'));
+    });
+  }
+  if (!cambios.length) {
+    ui.alert('Revisión', lineas.join(String.fromCharCode(10)), ui.ButtonSet.OK);
+    return;
+  }
+  lineas.push('', '¿Los paso a DISPONIBLE?');
+
+  if (ui.alert('Vendidos sin comprador', lineas.join(String.fromCharCode(10)),
+               ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+
+  cambios.forEach(function (c) { hoja.getRange(c.fila, jEst + 1).setValue('DISPONIBLE'); });
+  ui.alert('Listo', cambios.length + ' lote(s) devueltos a inventario.' +
+    String.fromCharCode(10) + String.fromCharCode(10) +
+    'Revisa el RESUMEN y publica.', ui.ButtonSet.OK);
 }
 
 // ------------------------------------------------------------- revisar
