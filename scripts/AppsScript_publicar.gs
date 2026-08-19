@@ -563,9 +563,8 @@ function cotejarCancelados() {
   if (iCab < 0) throw new Error('No encuentro el encabezado de ' + HOJA);
   const cab = filas[iCab].map(norm);
   const c = {};
-  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'MONTO', 'ENGANCHE', 'INGRESO'].forEach(function (n) {
-    c[n] = cab.indexOf(n);
-  });
+  ['PROYECTO', 'MANZANA', 'LOTE', 'CLIENTE', 'MONTO', 'ENGANCHE', 'INGRESO',
+   'NOTA'].forEach(function (n) { c[n] = cab.indexOf(n); });
 
   const donde = {};
   for (let i = iCab + 1; i < filas.length; i++) {
@@ -579,7 +578,12 @@ function cotejarCancelados() {
     if (i === undefined) { sinFila.push(x); return; }
     const actual = norm(filas[i][c.CLIENTE]);
     if (actual === norm(x.correcto)) { yaHechos.push(x); return; }
-    if (actual === norm(x.cancelado)) { x.fila = i + 1; porCorregir.push(x); return; }
+    if (actual === norm(x.cancelado)) {
+      x.fila = i + 1;
+      x.notaActual = c.NOTA >= 0 ? texto(filas[i][c.NOTA]) : '';
+      porCorregir.push(x);
+      return;
+    }
     x.actual = texto(filas[i][c.CLIENTE]);
     aMano.push(x);
   });
@@ -652,6 +656,11 @@ function aplicarCorreccionesCancelados() {
     if (c.MONTO >= 0) r.hoja.getRange(x.fila, c.MONTO + 1).setValue(x.monto || '');
     if (c.ENGANCHE >= 0) r.hoja.getRange(x.fila, c.ENGANCHE + 1).setValue(x.enganche || '');
     if (c.INGRESO >= 0) r.hoja.getRange(x.fila, c.INGRESO + 1).setValue(x.ingreso || 0);
+    // Se conserva quien se dio de baja: si no, el lote pierde su historia y
+    // nadie puede explicar despues por que cambio de comprador.
+    if (c.NOTA >= 0 && x.cancelado && !texto(x.notaActual)) {
+      r.hoja.getRange(x.fila, c.NOTA + 1).setValue('Cancelado: ' + x.cancelado);
+    }
   });
 
   ui.alert('Listo',

@@ -694,7 +694,7 @@ function renderDetailTable(){
       tr.innerHTML = `
         <td>${esc(r.mza)}</td>
         <td>${esc(r.lote)}</td>
-        <td>${r.cliente ? esc(r.cliente) : (r.nota ? '<span class="cat-tag">'+esc(r.nota)+'</span>' : '—')}</td>
+        <td>${r.cliente ? esc(r.cliente) : '—'}${r.nota ? '<br><span class="cat-tag">'+esc(r.nota)+'</span>' : ''}</td>
         <td class="num">${r.m2 ? fmtInt(Math.round(r.m2)) : '—'}</td>
         <td>${r.tipo ? `<span class="cat-tag">${esc(r.tipo)}</span>` : '—'}</td>
         <td>${statusBadge(r.estatus, r.nota)}</td>
