@@ -222,9 +222,12 @@ function construirDatos() {
       // Un lote entregado a un asesor como pago de comision NO es un hueco de
       // captura: la operacion esta cerrada y nunca hubo cobro. Se le da su
       // propia categoria para que no ensucie la lista de pendientes por revisar.
-      reg.categoria = (norm(tipo) === 'COMISION')
-        ? 'Pago de comisión a asesor'
-        : (texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado');
+      // Comision y Donacion no son ventas: son formas de que el lote salga del
+      // inventario sin cobrar nada. Su categoria se pone sola para que no
+      // caigan en la lista de pendientes por investigar.
+      const auto = { 'COMISION': 'Pago de comisión a asesor',
+                     'DONACION': 'Uso interno / comunal' }[norm(tipo)];
+      reg.categoria = auto || texto(f[col.CATEGORIA]) || 'Cliente sin dato capturado';
     }
     // Solo se avisa de VENDIDO a secas: una venta cerrada deberia tener nombre.
     // VENDIDO SIN DATO sin nombre NO es contradiccion, es lo que ese estatus

@@ -249,8 +249,9 @@
     ],
     "categoria_por_defecto": "Cliente sin dato capturado",
     "categoria_por_tipo": {
-      "_ayuda": "Si el TIPO VENTA es alguno de estos, la categoria se asigna sola y gana sobre la deducida por el nombre del cliente.",
-      "COMISION": "Pago de comisión a asesor"
+      "_ayuda": "Si el TIPO VENTA es alguno de estos, la categoria se asigna sola. Son formas en que un lote sale del inventario SIN ser una venta, asi que tampoco entran al conteo de contado/credito.",
+      "COMISION": "Pago de comisión a asesor",
+      "DONACION": "Uso interno / comunal"
     },
     "_categorias_validas": [
       "Inmobiliaria socia",
