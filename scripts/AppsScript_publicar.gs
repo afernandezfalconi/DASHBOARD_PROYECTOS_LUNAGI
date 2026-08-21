@@ -43,6 +43,25 @@ function esSocio(nombre) {
   return SOCIOS_QUE_APARTAN.some(function (s) { return norm(s) === n; });
 }
 
+/**
+ * Ciudad de cada proyecto. Es un dato del PROYECTO, no del lote, asi que vive
+ * aqui y no en una columna repetida 2,103 veces: una tabla de 4 renglones no se
+ * puede desincronizar, 2,103 celdas si.
+ *
+ * Lo que no este listado cae en PLAZA_POR_DEFECTO.
+ */
+const PLAZAS = {
+  'NEXUS': 'Salina Cruz',
+  'INTEROCEANICO': 'Salina Cruz',
+  'GUAYACAN': 'Salina Cruz',
+  'ZOI': 'Salina Cruz'
+};
+const PLAZA_POR_DEFECTO = 'Puerto Escondido';
+
+function plazaDe(proyecto) {
+  return PLAZAS[norm(proyecto)] || PLAZA_POR_DEFECTO;
+}
+
 // --------------------------------------------------------------- menu
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -261,6 +280,7 @@ function construirDatos() {
     const vendido = function (l) { return l.estatus === 'vendido' || l.estatus === 'vendido_sin_dato'; };
     proyectos.push({
       nombre: nombre,
+      plaza: plazaDe(nombre),
       total: lotes.length,
       disponibles: cuenta('disponible'),
       apartados: cuenta('apartado'),

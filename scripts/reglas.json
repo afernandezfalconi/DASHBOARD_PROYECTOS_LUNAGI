@@ -273,5 +273,15 @@
   "homologacion_clientes": {
     "_ayuda": "Equivalencias de nombre forzadas a mano. Se usan cuando la equivalencia no se puede deducir sola porque casi todos sus lotes estan afectados. HECTOR es la inmobiliaria del socio Hector, homologada como LUNAMAR.",
     "HECTOR": "LUNAMAR"
+  },
+  "plazas": {
+    "_ayuda": "Ciudad a la que pertenece cada proyecto. Es un dato del PROYECTO, no del lote, asi que vive aqui y no en una columna repetida 2,103 veces. Lo que no este listado cae en 'por_defecto'.",
+    "por_defecto": "Puerto Escondido",
+    "asignadas": {
+      "NEXUS": "Salina Cruz",
+      "INTEROCEANICO": "Salina Cruz",
+      "GUAYACAN": "Salina Cruz",
+      "ZOI": "Salina Cruz"
+    }
   }
 }

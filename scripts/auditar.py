@@ -377,7 +377,15 @@ def precio_por_m2(proyectos):
     return r2(dinero / metros) if metros else 0
 
 
-def agregar(proyectos):
+def plaza_de(nombre, reglas):
+    """Ciudad del proyecto. Dato del PROYECTO, no del lote: vive en reglas.json
+    y no en una columna repetida en cada fila."""
+    pl = reglas.get("plazas", {})
+    asign = {norm(k): v for k, v in pl.get("asignadas", {}).items()}
+    return asign.get(norm(nombre), pl.get("por_defecto", ""))
+
+
+def agregar(proyectos, reglas=None):
     """Calcula totales y alertas a partir de la lista de proyectos con lotes."""
     alertas = []
     salida = []
@@ -389,6 +397,7 @@ def agregar(proyectos):
                                 "cliente": l["cliente"], "categoria": l.get("categoria", "")})
         salida.append({
             "nombre": p["nombre"],
+            "plaza": plaza_de(p["nombre"], reglas or {}),
             "total": len(lotes),
             "disponibles": sum(1 for l in lotes if l["estatus"] == "disponible"),
             "apartados": sum(1 for l in lotes if l["estatus"] == "apartado"),
@@ -442,7 +451,7 @@ def main():
         diag.append("FUENTE: las 18 bases originales")
         crudos = desde_bases(reglas, diag)
 
-    proyectos, alertas = agregar(crudos)
+    proyectos, alertas = agregar(crudos, reglas)
     datos = {
         "generated": datetime.date.today().isoformat(),
         "grand": {

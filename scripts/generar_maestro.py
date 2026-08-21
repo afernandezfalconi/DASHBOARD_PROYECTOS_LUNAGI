@@ -153,7 +153,7 @@ def main():
 
     diag = []
     crudos = auditar.desde_bases(reglas, diag)
-    proyectos, _ = auditar.agregar(crudos)
+    proyectos, _ = auditar.agregar(crudos, reglas)
 
     wb = openpyxl.Workbook()
     wb.remove(wb.active)

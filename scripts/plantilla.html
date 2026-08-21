@@ -224,6 +224,9 @@
   </div>
 
   <div class="filters">
+    <span id="alcance" class="chip-clear" style="border-style:solid;cursor:default"></span>
+    <label for="plazaSel">Plaza</label>
+    <select id="plazaSel"><option value="ALL">Todas las plazas</option></select>
     <label for="projSel">Proyecto</label>
     <select id="projSel"><option value="ALL">Todos los proyectos</option></select>
     <label for="searchBox">Buscar cliente / lote</label>
@@ -286,6 +289,7 @@
         <thead>
           <tr>
             <th data-key="nombre">Proyecto</th>
+            <th data-key="plaza">Plaza</th>
             <th data-key="total" class="num">Total lotes</th>
             <th data-key="disponibles" class="num">Disponibles</th>
             <th data-key="apartados" class="num">Apartados</th>
@@ -363,7 +367,7 @@ function fmtMoneyCompact(n){
 function esc(s){ return String(s); }
 
 // ---------- state ----------
-const state = { project: 'ALL', search: '', sortSummary: {key:'total', dir:-1}, sortAlerts: {key:'proyecto', dir:1}, sortDetail: {key:'mza', dir:1} };
+const state = { plaza: 'ALL', project: 'ALL', search: '', sortSummary: {key:'total', dir:-1}, sortAlerts: {key:'proyecto', dir:1}, sortDetail: {key:'mza', dir:1} };
 
 const tooltip = document.getElementById('tooltip');
 function showTip(evt, html){
@@ -380,18 +384,55 @@ function hideTip(){ tooltip.classList.remove('show'); }
 // ---------- init ----------
 document.getElementById('genDate').textContent = DATA.generated;
 document.getElementById('projCount').textContent = DATA.projects.length;
+function etiquetaAlcance(){
+  const e = document.getElementById('alcance');
+  if (!e) return;
+  e.textContent = state.plaza === 'ALL'
+    ? 'Todas las plazas'
+    : state.plaza + ' · ' + visibles().length + ' proyecto(s)';
+}
+
+// Todo el tablero se dibuja sobre esta lista, no sobre DATA.projects, para que
+// el filtro de plaza afecte KPIs, graficas y tablas de una sola vez.
+function visibles(){
+  return DATA.projects.filter(p => state.plaza === 'ALL' || p.plaza === state.plaza);
+}
+
+const plazaSel = document.getElementById('plazaSel');
+[...new Set(DATA.projects.map(p=>p.plaza).filter(Boolean))].sort().forEach(pl=>{
+  const opt = document.createElement('option');
+  opt.value = pl; opt.textContent = pl;
+  plazaSel.appendChild(opt);
+});
 
 const projSel = document.getElementById('projSel');
-DATA.projects.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(p=>{
-  const opt = document.createElement('option');
-  opt.value = p.nombre; opt.textContent = p.nombre;
-  projSel.appendChild(opt);
-});
+function llenarProyectos(){
+  projSel.innerHTML = '<option value="ALL">Todos los proyectos</option>';
+  visibles().slice().sort((a,b)=>a.nombre.localeCompare(b.nombre)).forEach(p=>{
+    const opt = document.createElement('option');
+    opt.value = p.nombre; opt.textContent = p.nombre;
+    projSel.appendChild(opt);
+  });
+  projSel.value = state.project;
+}
+llenarProyectos();
 projSel.addEventListener('change', ()=>{ state.project = projSel.value; renderAll(); });
+
+plazaSel.addEventListener('change', ()=>{
+  state.plaza = plazaSel.value;
+  // al cambiar de plaza, un proyecto de la otra ciudad dejaria la vista vacia
+  if (state.project !== 'ALL' && !visibles().some(p=>p.nombre===state.project)) {
+    state.project = 'ALL';
+  }
+  llenarProyectos();
+  renderAll();
+});
 
 document.getElementById('searchBox').addEventListener('input', (e)=>{ state.search = e.target.value.trim().toUpperCase(); renderAll(); });
 document.getElementById('clearFilters').addEventListener('click', ()=>{
-  state.project='ALL'; state.search=''; projSel.value='ALL'; document.getElementById('searchBox').value='';
+  state.plaza='ALL'; state.project='ALL'; state.search='';
+  plazaSel.value='ALL'; document.getElementById('searchBox').value='';
+  llenarProyectos(); projSel.value='ALL';
   renderAll();
 });
 
@@ -411,7 +452,19 @@ applyThemeLabel();
 
 // ---------- KPIs ----------
 function currentGrand(){
-  if (state.project === 'ALL') return DATA.grand;
+  if (state.project === 'ALL') {
+    if (state.plaza === 'ALL') return DATA.grand;
+    // sin proyecto elegido pero con plaza: se suman los de esa ciudad
+    const v = visibles();
+    const s = (k)=> v.reduce((a,p)=>a+(p[k]||0),0);
+    return { total:s('total'), available:s('disponibles'), reserved:s('apartados'),
+             sold:s('vendidos'), sold_with_data:s('vendidos_con_ingreso'),
+             sold_no_data:s('vendidos_sin_ingreso'), income:s('ingresos'),
+             m2_total:s('m2_total'), m2_available:s('m2_disponible'), m2_sold:s('m2_vendido'),
+             lots_with_m2:s('lotes_con_m2'), price_per_m2:(DATA.grand.price_per_m2||0),
+             cash_lots:s('contado'), credit_lots:s('credito'),
+             cash_income:s('ingresos_contado'), credit_income:s('ingresos_credito') };
+  }
   const p = DATA.projects.find(x=>x.nombre===state.project);
   return { total:p.total, available:p.disponibles, reserved:p.apartados, sold:p.vendidos,
            sold_with_data:p.vendidos_con_ingreso, sold_no_data:p.vendidos_sin_ingreso, income:p.ingresos,
@@ -467,7 +520,7 @@ function renderKpisM2(g){
 function renderChartLots(){
   const el = document.getElementById('chartLots');
   el.innerHTML = '';
-  const projects = DATA.projects.slice().sort((a,b)=>b.total-a.total);
+  const projects = visibles().slice().sort((a,b)=>b.total-a.total);
   const maxTotal = Math.max(...projects.map(p=>p.total));
   projects.forEach(p=>{
     const row = document.createElement('div');
@@ -498,7 +551,7 @@ function renderChartM2(){
   const el = document.getElementById('chartM2');
   if (!el) return;
   el.innerHTML = '';
-  const projects = DATA.projects.slice()
+  const projects = visibles().slice()
     .sort((a,b)=> ((b.m2_disponible||0)+(b.m2_vendido||0)) - ((a.m2_disponible||0)+(a.m2_vendido||0)));
   const max = Math.max(1, ...projects.map(p=>(p.m2_disponible||0)+(p.m2_vendido||0)));
   projects.forEach(p=>{
@@ -530,7 +583,7 @@ function renderChartValor(){
   if (!el) return;
   el.innerHTML = '';
   const precio = DATA.grand.price_per_m2 || 0;
-  const projects = DATA.projects.slice()
+  const projects = visibles().slice()
     .map(p=>({p, valor:(p.m2_disponible||0)*precio}))
     .sort((a,b)=>b.valor-a.valor);
   const max = Math.max(1, ...projects.map(x=>x.valor));
@@ -557,7 +610,7 @@ function renderChartValor(){
 function renderChartIncome(){
   const el = document.getElementById('chartIncome');
   el.innerHTML = '';
-  const projects = DATA.projects.slice().sort((a,b)=>b.ingresos-a.ingresos);
+  const projects = visibles().slice().sort((a,b)=>b.ingresos-a.ingresos);
   const maxIncome = Math.max(...projects.map(p=>p.ingresos));
   projects.forEach(p=>{
     const row = document.createElement('div');
@@ -606,7 +659,7 @@ function updateSortHeaders(tableId, sortState){
 // ---------- summary table ----------
 function renderSummaryTable(){
   const body = document.getElementById('tblSummaryBody');
-  let rows = DATA.projects.slice();
+  let rows = visibles().slice();
   const {key, dir} = state.sortSummary;
   rows.sort((a,b)=> (typeof a[key]==='string' ? a[key].localeCompare(b[key]) : a[key]-b[key]) * dir);
   body.innerHTML = '';
@@ -615,6 +668,7 @@ function renderSummaryTable(){
     if (state.project !== 'ALL' && state.project !== p.nombre) tr.style.opacity = '0.4';
     tr.innerHTML = `
       <td>${esc(p.nombre)}</td>
+      <td><span class="cat-tag">${esc(p.plaza||'—')}</span></td>
       <td class="num">${fmtInt(p.total)}</td>
       <td class="num">${fmtInt(p.disponibles)}</td>
       <td class="num">${fmtInt(p.apartados)}</td>
@@ -635,7 +689,8 @@ function renderSummaryTable(){
 // ---------- alerts table ----------
 function renderAlertsTable(){
   const body = document.getElementById('tblAlertsBody');
-  let rows = DATA.alerts.slice();
+  const permitidos = new Set(visibles().map(p=>p.nombre));
+  let rows = DATA.alerts.filter(a=>permitidos.has(a.proyecto));
   if (state.project !== 'ALL') rows = rows.filter(r=>r.proyecto === state.project);
   if (state.search) rows = rows.filter(r => (r.cliente||'').toUpperCase().includes(state.search) || (r.proyecto||'').toUpperCase().includes(state.search) || String(r.lote).toUpperCase().includes(state.search));
   const {key, dir} = state.sortAlerts;
@@ -714,6 +769,7 @@ attachSort('tblAlerts', state.sortAlerts, ()=>{ renderAlertsTable(); });
 attachSort('tblDetail', state.sortDetail, ()=>{ renderDetailTable(); });
 
 function renderAll(){
+  etiquetaAlcance();
   renderKpis();
   renderChartLots();
   renderChartIncome();
